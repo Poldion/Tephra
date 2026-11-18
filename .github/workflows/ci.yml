@@ -88,7 +88,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/shots"
           cd app
           TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
-            flutter test integration_test -d linux \
+            flutter test integration_test/app_test.dart -d linux --reporter expanded \
             --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots"
       - uses: actions/upload-artifact@v7
         if: matrix.target == 'linux' && always()

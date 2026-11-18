@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **App for Linux:** as a Debian package (`tephra_<version>_amd64.deb`, for Ubuntu 22.04 and Debian 12 or newer; it
   also contains the command line and the sync server) and as an AppImage. The automated app test now runs on Linux as
   well.
+- **Sync server as a container image:** `ghcr.io/poldion/tephra-server` for amd64 and arm64, published with every
+  release. The Compose file in `deploy/` uses it.
 
 ## [0.1.0] – 2026-11-18
 

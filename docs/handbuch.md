@@ -619,9 +619,9 @@ deinen Namen falsche Passwörter probiert.
 
 ### Mit Docker
 
-Der Ordner [`deploy/`](../deploy/) enthält ein `Dockerfile`, eine Compose-Datei mit [Caddy](https://caddyserver.com)
-als TLS-Proxy und ein `Caddyfile`. Ein veröffentlichtes Image gibt es nicht; die Compose-Datei baut es aus dem
-Quelltext.
+Der Ordner [`deploy/`](../deploy/) enthält ein `Dockerfile`, eine Compose-Datei mit [Caddy](https://caddyserver.com) als
+TLS-Proxy und ein `Caddyfile`. Die Compose-Datei verwendet das veröffentlichte Image `ghcr.io/poldion/tephra-server`
+(amd64 und arm64); mit `--build` baut sie es stattdessen aus dem Quelltext.
 
 1. Ersetze `sync.example.org` in `deploy/Caddyfile` durch deinen eigenen Namen. Er muss auf den Rechner zeigen, und
    die Ports 80 und 443 müssen erreichbar sein, damit Caddy ein Zertifikat holen kann.
@@ -629,7 +629,7 @@ Quelltext.
 
    ```bash
    cd deploy
-   docker compose up -d --build
+   docker compose up -d
    ```
 
 3. Einen Einladungscode erzeugen:

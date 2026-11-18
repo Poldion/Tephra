@@ -2,7 +2,7 @@
 #
 # 1. Replace sync.example.org in the Caddyfile with your own name; it must point to this machine,
 #    and ports 80 and 443 must be reachable from the internet.
-# 2. docker compose up -d --build
+# 2. docker compose up -d            (fetches the published image; add --build to build it from the source)
 # 3. docker compose exec sync tephra-server invite        (prints an invite code for a new account)
 
 services:
@@ -10,7 +10,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: tephra-server:local
+    image: ghcr.io/poldion/tephra-server:latest
     restart: unless-stopped
     environment:
       # open = anyone may create an account, invite = only with an invite code, closed = nobody

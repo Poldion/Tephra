@@ -3,5 +3,6 @@
 !Cargo.toml
 !Cargo.lock
 !crates/
+!app/rust/
 !LICENSE
 !THIRD_PARTY_NOTICES.md

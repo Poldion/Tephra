@@ -600,8 +600,9 @@ it. The backup contains ciphertext only, plus user names and device names.
 
 ### With Docker
 
-The folder [`deploy/`](../deploy/) contains a `Dockerfile`, a Compose file with [Caddy](https://caddyserver.com) as
-TLS proxy and a `Caddyfile`. There is no published image; the Compose file builds it from the source.
+The folder [`deploy/`](../deploy/) contains a `Dockerfile`, a Compose file with [Caddy](https://caddyserver.com) as TLS
+proxy and a `Caddyfile`. The Compose file uses the published image `ghcr.io/poldion/tephra-server` (amd64 and arm64);
+with `--build` it builds the image from the source instead.
 
 1. Replace `sync.example.org` in `deploy/Caddyfile` with your own name. It must point to the machine, and ports 80 and
    443 must be reachable so that Caddy can obtain a certificate.
@@ -609,7 +610,7 @@ TLS proxy and a `Caddyfile`. There is no published image; the Compose file build
 
    ```bash
    cd deploy
-   docker compose up -d --build
+   docker compose up -d
    ```
 
 3. Create an invite code:

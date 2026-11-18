@@ -1,13 +1,16 @@
 # syntax=docker/dockerfile:1
 #
 # Sync server of Tephra.
-# Build from the repository root:
+# Published for every release as ghcr.io/poldion/tephra-server (amd64 and arm64).
+# To build it yourself, from the repository root:
 #   docker build -f deploy/Dockerfile -t tephra-server .
 
 FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# The bridge of the app is a member of the workspace; Cargo wants to see it even though it is not built here.
+COPY app/rust ./app/rust
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p tephra-server \

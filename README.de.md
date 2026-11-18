@@ -47,8 +47,7 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
   Emulator erprobt; ohne Abgleich in der App teilt sie ihren Tresor noch nicht mit anderen Geräten.
 - Entfernte Portweiterleitungen, Anmeldung über einen SSH-Agenten und andere VPN-Protokolle als WireGuard.
 - Proxys (SOCKS5, HTTP) und Host-Gruppen sind im Kern umgesetzt, haben aber noch keine Befehle.
-- Signierte Windows-Programme und ein veröffentlichtes Docker-Image. Windows warnt beim Start des Installers vor
-  einem unbekannten Herausgeber.
+- Signierte Windows-Programme. Windows warnt beim Start des Installers vor einem unbekannten Herausgeber.
 - Die Kommandozeile spricht bisher nur Deutsch.
 - Entwickelt wird unter Windows. Die Linux-Fassung wird bisher nur durch die automatischen Tests der CI geprüft.
 - Der kryptografische Entwurf wurde noch von niemandem außerhalb des Projekts geprüft. Lies das
@@ -84,6 +83,8 @@ Auf der [Releases-Seite](https://github.com/Poldion/Tephra/releases) liegen zu j
   `Tephra-<Version>-x86_64.AppImage` für andere Distributionen: ausführbar machen und starten.
 - **Linux, nur Kommandozeile:** `Tephra-<Version>-linux-x64.tar.gz` – `tephra` und `tephra-server`, statisch gelinkt,
   dazu eine systemd-Unit für den Server.
+- **Sync-Server mit Docker:** `docker pull ghcr.io/poldion/tephra-server` (amd64 und arm64); unter [deploy/](deploy/)
+  liegt eine Compose-Datei mit TLS-Proxy.
 - **Android:** `Tephra-<Version>.apk` (ab Android 7). Ihr Signaturzertifikat hat den SHA-256-Fingerabdruck
   `6A:50:B9:6C:4C:67:9B:D9:9A:C2:FE:7C:8A:DE:CF:F6:27:22:EF:EC:CB:D3:F5:75:70:54:8D:0F:4C:D3:6D:E9`.
 
@@ -136,7 +137,8 @@ Schon eine OpenSSH-Konfiguration vorhanden? `tephra import-ssh-config` übernimm
 
 ### Sync-Server
 
-Auf dem Server (oder mit Docker, siehe [deploy/](deploy/)):
+Auf dem Server (oder mit Docker: das Image `ghcr.io/poldion/tephra-server` und die Compose-Datei unter
+[deploy/](deploy/)):
 
 ```bash
 tephra-server serve            # lauscht auf 127.0.0.1:8787, davor gehört ein Reverse-Proxy mit TLS

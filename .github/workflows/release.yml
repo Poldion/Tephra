@@ -3,6 +3,7 @@
 #   Windows   installer (app, command line, sync server) and the same as a portable zip
 #   Linux     the app as a Debian package and as an AppImage; command line and sync server, statically linked
 #   Android   the signed app
+#   Server    the sync server as a container image for amd64 and arm64 (ghcr.io/poldion/tephra-server)
 #
 # Started by hand (workflow_dispatch) it only tries the build: the files are kept as workflow
 # artifacts and nothing is attached to a release.
@@ -247,3 +248,65 @@ jobs:
         with:
           name: android
           path: dist/*
+
+  image:
+    name: Server image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/poldion/tephra-server
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -f deploy/Dockerfile --build-arg VERSION="${TAG#v}" -t tephra-server:built .
+      - name: Try the image
+        run: |
+          # Start the server as the Compose file does and see whether it answers and can create an invite code.
+          docker run -d --name sync --read-only --tmpfs /tmp --cap-drop ALL -p 127.0.0.1:8787:8787 \
+            -e TEPHRA_SERVER_REGISTRATION=invite tephra-server:built
+          for attempt in $(seq 50); do curl -sf http://127.0.0.1:8787/healthz && break; sleep 0.2; done
+          curl -sf http://127.0.0.1:8787/healthz
+          docker exec sync tephra-server --version
+          docker exec sync tephra-server invite
+          docker stop sync
+          docker logs sync
+      - name: Push
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag tephra-server:built "$IMAGE:${TAG#v}-${{ matrix.arch }}"
+          docker push "$IMAGE:${TAG#v}-${{ matrix.arch }}"
+
+  image-manifest:
+    name: Server image
+    # Joins the images of both architectures under the version and under "latest".
+    if: github.event_name == 'release'
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/poldion/tephra-server
+    steps:
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          version="${TAG#v}"
+          docker buildx imagetools create -t "$IMAGE:$version" -t "$IMAGE:latest" \
+            "$IMAGE:$version-amd64" "$IMAGE:$version-arm64"
+          docker buildx imagetools inspect "$IMAGE:$version"
