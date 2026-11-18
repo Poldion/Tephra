@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Tephra
+GenericName=SSH Client
+GenericName[de]=SSH-Client
+Comment=SSH client with credential vault and in-app WireGuard tunnels
+Comment[de]=SSH-Client mit Zugangstresor und WireGuard-Tunneln in der App
+Exec=tephra-app
+Icon=io.github.poldion.tephra
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=ssh;terminal;wireguard;vpn;
+StartupWMClass=io.github.poldion.tephra
+StartupNotify=true

@@ -1,4 +1,4 @@
-"""Zeichnet das App-Symbol von Tephra und schreibt die Dateien für Android und Windows.
+"""Zeichnet das App-Symbol von Tephra und schreibt die Dateien für Android, Windows und Linux.
 
 Geometrie auf einem Raster von 108 Einheiten (wie das adaptive Symbol von Android):
 Eingabezeichen ">" und Schreibmarke "_" in Türkis, darüber aufsteigende Bruchstücke in Bernstein.
@@ -59,6 +59,10 @@ for name, size in {'mdpi': 48, 'hdpi': 72, 'xhdpi': 96, 'xxhdpi': 144, 'xxxhdpi'
 sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 tile(256).save(f'{APP}/windows/runner/resources/app_icon.ico', sizes=[(s, s) for s in sizes],
                append_images=[tile(s) for s in sizes[:-1]])
+
+# Linux: Symbole für die Pakete (Ordner packaging/linux/icons im Hauptordner).
+for size in (48, 64, 128, 256):
+    tile(size).save(f'{APP}/../packaging/linux/icons/{size}.png', optimize=True)
 
 # Vorschau: groß, klein und das adaptive Symbol in Kreisform, auf hellem und dunklem Grund.
 preview = Image.new('RGBA', (1100, 420), (236, 240, 238, 255))

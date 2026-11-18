@@ -24,9 +24,11 @@ Kommandozeile. Unter Windows verwenden beide denselben Tresor.
 
 ## Installation
 
-Fertige Programme für Windows und Linux liegen auf der [Releases-Seite](https://github.com/Poldion/Tephra/releases):
-Archiv entpacken und `tephra` in einen Ordner kopieren, der im `PATH` steht. Oder aus dem Quelltext bauen, mit Rust 1.90
-oder neuer und einem C-Compiler:
+Fertige Programme liegen auf der [Releases-Seite](https://github.com/Poldion/Tephra/releases). Unter Windows kann der
+Installer (`…-setup.exe`) `tephra` in den `PATH` aufnehmen; unter Ubuntu und Debian legt das Paket
+(`tephra_…_amd64.deb`) es nach `/usr/bin`. Aus den Archiven (`…-windows-x64.zip`, `…-linux-x64.tar.gz`) kopierst du
+`tephra` selbst in einen Ordner, der im `PATH` steht. Oder aus dem Quelltext bauen, mit Rust 1.90 oder neuer und einem
+C-Compiler:
 
 ```bash
 git clone https://github.com/Poldion/Tephra.git

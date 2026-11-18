@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] – 2026-11-19
+
+### Added
+
+- **Installer for Windows:** `Tephra-<version>-windows-x64-setup.exe` installs the app, the command line and the sync
+  server for the current user, without administrator rights: Start menu entry, uninstalling through Windows and, if
+  wanted, `tephra` on the `PATH`. The zip stays as a portable version.
+- **App for Linux:** as a Debian package (`tephra_<version>_amd64.deb`, for Ubuntu 22.04 and Debian 12 or newer; it
+  also contains the command line and the sync server) and as an AppImage. The automated app test now runs on Linux as
+  well.
+
 ## [0.1.0] – 2026-11-18
 
 First release, a preview: the command line `tephra` and the sync server `tephra-server` for Windows and Linux, and a

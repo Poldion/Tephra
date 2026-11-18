@@ -25,8 +25,10 @@ this manual quotes it.
 
 ## Installation
 
-Prebuilt programs for Windows and Linux are on the [releases page](https://github.com/Poldion/Tephra/releases): unpack
-the archive and copy `tephra` to a folder on your `PATH`. Or build from source with Rust 1.90 or newer and a C compiler:
+Prebuilt programs are on the [releases page](https://github.com/Poldion/Tephra/releases). On Windows the installer
+(`…-setup.exe`) can put `tephra` on the `PATH`; on Ubuntu and Debian the package (`tephra_…_amd64.deb`) installs it to
+`/usr/bin`. From the archives (`…-windows-x64.zip`, `…-linux-x64.tar.gz`) copy `tephra` to a folder on your `PATH`
+yourself. Or build from source with Rust 1.90 or newer and a C compiler:
 
 ```bash
 git clone https://github.com/Poldion/Tephra.git

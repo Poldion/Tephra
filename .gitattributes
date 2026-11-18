@@ -3,3 +3,5 @@
 *.jpg binary
 *.webp binary
 *.ico binary
+# Inno Setup liest sein Skript mit Windows-Zeilenenden.
+*.iss text eol=crlf

@@ -5,8 +5,8 @@
 > An SSH client with a credential vault, a VPN tunnel per host, a local MCP server for language models and a small
 > self-hosted sync server that only ever sees ciphertext.
 
-**License:** MIT · **Language:** Rust, Dart · **Runs on:** Windows, Linux (command line and sync server),
-Windows, Android (app) · **Status:** preview, in development
+**License:** MIT · **Language:** Rust, Dart · **Runs on:** Windows, Linux, Android (app only) ·
+**Status:** preview, in development
 
 ![Tephra on Windows: the host list](docs/bilder/hosts.png)
 
@@ -31,20 +31,21 @@ The project is under active development. **What exists today:**
   commands (`tephra exec`), port forwarding (`tephra forward`), import from `~/.ssh/config`, sync (`tephra sync …`), MCP
   access (`tephra mcp …`) and the background service (`tephra daemon`)
 - `tephra-server` – the sync server
-- A first version of the graphical app for Windows and Android (folder `app/`): create and unlock the vault, manage
-  hosts, identities, keys and WireGuard profiles, terminal sessions in tabs – direct, through jump hosts or through the
-  tunnel. On Android with extra keys (Esc, Tab, Ctrl, arrows) above the keyboard.
+- A first version of the graphical app for Windows, Linux and Android (folder `app/`): create and unlock the vault,
+  manage hosts, identities, keys and WireGuard profiles, terminal sessions in tabs – direct, through jump hosts or
+  through the tunnel. On Android with extra keys (Esc, Tab, Ctrl, arrows) above the keyboard.
 
 **Not there yet:**
 
 - The app still lacks sync, MCP permissions, snippets, port forwarding, file transfer, recovery with the recovery key
-  and automatic locking; the command line covers these and, on Windows, uses the same vault. On Linux the app builds
-  but has never been run, so there is no download for it. The Android version has only been tried in the emulator so
-  far, and without sync in the app it does not share its vault with other devices.
+  and automatic locking; the command line covers these and, on Windows and Linux, uses the same vault. On Linux the
+  app is exercised by the automated app test only; nobody has worked with it on a real desktop yet. The Android
+  version has only been tried in the emulator so far, and without sync in the app it does not share its vault with
+  other devices.
 - Remote port forwarding, login through an SSH agent and VPN protocols other than WireGuard.
 - Proxies (SOCKS5, HTTP) and host groups are implemented in the core but have no commands yet.
-- Installers, signed Windows programs and a published Docker image. The downloads are plain archives; Windows will
-  warn about an unknown publisher.
+- Signed Windows programs and a published Docker image. Windows will warn about an unknown publisher when the
+  installer starts.
 - The command line speaks German only.
 - Development happens on Windows. The Linux build is so far exercised by the automated tests in CI only.
 - The cryptographic design has not been reviewed by a third party. Read the [threat model](docs/threat-model.md)
@@ -72,11 +73,15 @@ The project is under active development. **What exists today:**
 
 The [releases page](https://github.com/Poldion/Tephra/releases) has, for each version:
 
-- `Tephra-<version>-windows-x64.zip` – the app (`tephra-app.exe`), the command line `tephra.exe` and the sync server
-  `tephra-server.exe`. Unpack it anywhere; nothing needs to be installed.
-- `Tephra-<version>-linux-x64.tar.gz` – `tephra` and `tephra-server`, statically linked, plus a systemd unit for the
-  server.
-- `Tephra-<version>.apk` – the Android app (Android 7 or newer). Its signing certificate has the SHA-256 fingerprint
+- **Windows:** `Tephra-<version>-windows-x64-setup.exe` installs the app, the command line `tephra.exe` and the sync
+  server `tephra-server.exe` for your user, without administrator rights. `Tephra-<version>-windows-x64.zip` is the
+  same as a portable folder: unpack it anywhere.
+- **Linux, app:** `tephra_<version>_amd64.deb` for Ubuntu (22.04 or newer) and Debian (12 or newer) –
+  `sudo apt install ./tephra_<version>_amd64.deb`; it also brings `tephra` and `tephra-server`. Or
+  `Tephra-<version>-x86_64.AppImage` for other distributions: make it executable and start it.
+- **Linux, command line only:** `Tephra-<version>-linux-x64.tar.gz` – `tephra` and `tephra-server`, statically
+  linked, plus a systemd unit for the server.
+- **Android:** `Tephra-<version>.apk` (Android 7 or newer). Its signing certificate has the SHA-256 fingerprint
   `6A:50:B9:6C:4C:67:9B:D9:9A:C2:FE:7C:8A:DE:CF:F6:27:22:EF:EC:CB:D3:F5:75:70:54:8D:0F:4C:D3:6D:E9`.
 
 Each file comes with a `.sha256` checksum.

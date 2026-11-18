@@ -1,5 +1,5 @@
 # GitHub Actions: format check, Clippy and tests on Linux and Windows, analysis and build of the app,
-# license and advisory check.
+# the app test on Linux, license and advisory check.
 name: CI
 
 on:
@@ -74,6 +74,28 @@ jobs:
         run: flutter analyze
       - name: Build
         run: flutter build ${{ matrix.target }} --debug
+      # Drives the real app against the SSH test server: create a vault, connect, type, lock and unlock.
+      - name: App test
+        if: matrix.target == 'linux'
+        working-directory: ${{ github.workspace }}
+        timeout-minutes: 20
+        run: |
+          sudo apt-get install -y xvfb fonts-dejavu-core
+          cargo build -p tephra-ssh --features testing --example test_server
+          ./target/debug/examples/test_server > "$RUNNER_TEMP/server.txt" &
+          for attempt in $(seq 50); do grep -q '^port=' "$RUNNER_TEMP/server.txt" && break; sleep 0.2; done
+          port="$(sed -n 's/^port=//p' "$RUNNER_TEMP/server.txt")"
+          mkdir -p "$RUNNER_TEMP/shots"
+          cd app
+          TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
+            flutter test integration_test -d linux \
+            --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots"
+      - uses: actions/upload-artifact@v7
+        if: matrix.target == 'linux' && always()
+        with:
+          name: app-test-linux
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
 
   deny:
     name: Licenses and advisories

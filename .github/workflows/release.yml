@@ -1,5 +1,8 @@
-# Builds the programs for every published release and attaches them to it: the app, command line and
-# sync server for Windows, command line and sync server for Linux, and the signed Android app.
+# Builds the programs for every published release and attaches them to it:
+#
+#   Windows   installer (app, command line, sync server) and the same as a portable zip
+#   Linux     the app as a Debian package and as an AppImage; command line and sync server, statically linked
+#   Android   the signed app
 #
 # Started by hand (workflow_dispatch) it only tries the build: the files are kept as workflow
 # artifacts and nothing is attached to a release.
@@ -39,8 +42,9 @@ jobs:
       - name: App
         working-directory: app
         run: flutter build windows --release
-      - name: Package
+      - name: Collect the programs
         run: |
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
           name="Tephra-${TAG#v}-windows-x64"
           mkdir -p "dist/$name"
           cp -r app/build/windows/x64/runner/Release/. "dist/$name/"
@@ -50,10 +54,38 @@ jobs:
             cp "$(cygpath "$SYSTEMROOT")/System32/$dll" "dist/$name/"
           done
           "dist/$name/tephra.exe" --version
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y }
+          $source = Join-Path $PWD "dist\Tephra-$($env:VERSION)-windows-x64"
+          $output = Join-Path $PWD "dist"
+          & $iscc "/DAppVersion=$($env:VERSION)" "/DSourceDir=$source" "/DOutputDir=$output" packaging\windows\tephra.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Try the installer
+        shell: pwsh
+        run: |
+          # Install silently, check that the programs are there and in the PATH, then uninstall again.
+          $setup = "dist\Tephra-$($env:VERSION)-windows-x64-setup.exe"
+          $target = Join-Path $env:RUNNER_TEMP "tephra-install"
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$target", "/TASKS=addtopath" -Wait
+          & "$target\tephra.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "The installed command line does not run." }
+          if (-not (Test-Path "$target\tephra-app.exe")) { throw "The app is missing after installing." }
+          if ([Environment]::GetEnvironmentVariable("Path", "User") -notlike "*$target*") { throw "The PATH was not extended." }
+          Start-Process "$target\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          foreach ($i in 1..30) { if (-not (Test-Path "$target\tephra.exe")) { break }; Start-Sleep -Seconds 1 }
+          if (Test-Path "$target\tephra.exe") { throw "The programs are still there after uninstalling." }
+          if ([Environment]::GetEnvironmentVariable("Path", "User") -like "*$target*") { throw "The PATH was not cleaned up." }
+      - name: Package
+        run: |
           cd dist
+          name="Tephra-$VERSION-windows-x64"
           7z a -tzip "$name.zip" "$name" > /dev/null
-          sha256sum "$name.zip" > "$name.zip.sha256"
           rm -r "$name"
+          for file in *.zip *.exe; do sha256sum "$file" > "$file.sha256"; done
+          ls -l
       - name: Attach to the release
         if: github.event_name == 'release'
         env:
@@ -65,8 +97,66 @@ jobs:
           name: windows
           path: dist/*
 
+  linux-app:
+    name: Linux app
+    # The oldest system on offer, so that the packages also run on older distributions
+    # (Ubuntu from 22.04, Debian from 12).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev xvfb desktop-file-utils
+      - name: Command line and sync server
+        run: cargo build --release --locked -p tephra-cli -p tephra-server
+      - name: App
+        working-directory: app
+        run: flutter build linux --release
+      - name: Packages
+        run: |
+          version="${TAG#v}"
+          # A Debian version has to start with a digit.
+          debian="$version"; [ "$debian" = dev ] && debian=0.0.0
+          bundle=app/build/linux/x64/release/bundle
+          desktop-file-validate packaging/linux/io.github.poldion.tephra.desktop
+          sh packaging/linux/build-deb.sh "$debian" "$bundle" target/release dist
+          tool="$RUNNER_TEMP/appimagetool"
+          curl -sSfL -o "$tool" https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $tool" | sha256sum -c -
+          chmod +x "$tool"
+          sh packaging/linux/build-appimage.sh "$version" "$bundle" "$tool" "dist/Tephra-$version-x86_64.AppImage"
+      - name: Try the packages
+        run: |
+          sudo apt-get install -y ./dist/tephra_*_amd64.deb
+          tephra --version
+          tephra-server --version
+          # The app has no way to end by itself: it is fine if it is still running after ten seconds.
+          alive() { code=0; xvfb-run -a timeout 10 "$@" || code=$?; test "$code" -eq 124; }
+          alive tephra-app
+          alive ./dist/Tephra-*.AppImage --appimage-extract-and-run
+          cd dist
+          for file in *.deb *.AppImage; do sha256sum "$file" > "$file.sha256"; done
+          ls -l
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/* --clobber
+      - uses: actions/upload-artifact@v7
+        if: github.event_name != 'release'
+        with:
+          name: linux-app
+          path: dist/*
+
   linux:
-    name: Linux
+    name: Linux command line
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
