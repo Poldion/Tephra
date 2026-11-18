@@ -1,0 +1,21 @@
+[package]
+name = "tephra_bridge"
+description = "Bindeglied zwischen der Flutter-Oberfläche und dem Kern von Tephra"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+flutter_rust_bridge = "=2.13.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
+tephra-core = { version = "0.1.0", path = "../../crates/tephra-core" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

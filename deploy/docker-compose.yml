@@ -1,0 +1,53 @@
+# Sync server of Tephra behind Caddy, which obtains the TLS certificate by itself.
+#
+# 1. Replace sync.example.org in the Caddyfile with your own name; it must point to this machine,
+#    and ports 80 and 443 must be reachable from the internet.
+# 2. docker compose up -d --build
+# 3. docker compose exec sync tephra-server invite        (prints an invite code for a new account)
+
+services:
+  sync:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: tephra-server:local
+    restart: unless-stopped
+    environment:
+      # open = anyone may create an account, invite = only with an invite code, closed = nobody
+      TEPHRA_SERVER_REGISTRATION: invite
+      # Caddy sets X-Forwarded-For; login attempts are limited per address from that header.
+      # Remove this line if the server is reachable without a proxy in front of it.
+      TEPHRA_SERVER_BEHIND_PROXY: "true"
+      TEPHRA_SERVER_MAX_ITEMS: "50000"
+      TEPHRA_SERVER_MAX_MIB: "256"
+    volumes:
+      - sync-data:/data
+    # Reachable only for Caddy, not published on the host.
+    expose:
+      - "8787"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - sync
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  sync-data:
+  caddy-data:
+  caddy-config:

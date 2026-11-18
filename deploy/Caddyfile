@@ -1,0 +1,13 @@
+# TLS reverse proxy in front of the sync server.
+# Replace sync.example.org with your own name. Caddy obtains and renews the certificate by itself.
+
+sync.example.org {
+	# In the Compose setup the server is reachable as "sync"; with the systemd unit use 127.0.0.1:8787.
+	reverse_proxy sync:8787
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

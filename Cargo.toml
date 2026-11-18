@@ -1,0 +1,54 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/tephra-model",
+    "crates/tephra-crypto",
+    "crates/tephra-vault",
+    "crates/tephra-transport",
+    "crates/tephra-ssh",
+    "crates/tephra-sync-proto",
+    "crates/tephra-sync",
+    "crates/tephra-mcp",
+    "crates/tephra-core",
+    "crates/tephra-cli",
+    "crates/tephra-server",
+    "app/rust",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+tephra-model = { path = "crates/tephra-model" }
+tephra-crypto = { path = "crates/tephra-crypto" }
+tephra-vault = { path = "crates/tephra-vault" }
+tephra-transport = { path = "crates/tephra-transport" }
+tephra-ssh = { path = "crates/tephra-ssh" }
+tephra-sync-proto = { path = "crates/tephra-sync-proto" }
+tephra-sync = { path = "crates/tephra-sync" }
+tephra-mcp = { path = "crates/tephra-mcp" }
+tephra-core = { path = "crates/tephra-core" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"
+
+# Kryptografie auch in Debug-Builds optimieren, sonst dauern Argon2 und
+# der WireGuard-Handshake in Tests unverhältnismäßig lange.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3

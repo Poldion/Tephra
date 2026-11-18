@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/android/.gradle/
+app/android/local.properties
+app/android/app/build/
+*.iml
+
+# Lokale Daten und Geheimnisse
+*.tephra
+*.tephra-wal
+*.tephra-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+.env
+.env.*
+!.env.example
+*.log
+*.keystore
+*.jks
+
+# Interne Arbeitslisten und private Notizen – nicht im öffentlichen Repository
+VERBESSERUNGEN*.md
+*.local.md
+
+# Werkzeuge und Editoren
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,106 @@
+# Konfiguration für cargo-deny (https://embarkstudios.github.io/cargo-deny/).
+#
+# Aufruf:   cargo deny --locked check
+# Einzeln:  cargo deny --locked check licenses | bans | advisories | sources
+#
+# Hintergrund und Bewertung der einzelnen Lizenzen: docs/lizenzen.md
+
+[graph]
+# Geprüft wird der Abhängigkeitsgraph der Plattformen, für die wir Binaries
+# ausliefern. Kommt eine Plattform hinzu (z. B. x86_64-unknown-linux-musl für
+# das Docker-Image oder armv7-linux-androideabi für ältere Android-Geräte),
+# muss sie hier ergänzt und docs/lizenzen.md aktualisiert werden.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-linux-android",
+]
+all-features = false
+no-default-features = false
+
+[advisories]
+# Quelle: RustSec Advisory Database (Standardwert von cargo-deny).
+# Sicherheitslücken führen immer zum Fehler; die folgenden Schalter regeln
+# die übrigen Meldungsarten.
+yanked = "warn"
+unmaintained = "all"
+unsound = "all"
+# Ausnahmen nur mit Begründung und nur nach Eintrag in docs/lizenzen.md
+# („Offene Punkte"). Beispiel:
+#   { id = "RUSTSEC-0000-0000", reason = "…" }
+ignore = [
+    # chrono gilt als nicht mehr gepflegt; eine Sicherheitslücke ist nicht gemeldet.
+    # Es kommt nur indirekt herein (rmcp, schemars, russh-sftp, russh-util) und
+    # wird im eigenen Code nicht verwendet. Entfällt, sobald diese Crates
+    # umgestellt haben. Siehe docs/lizenzen.md, „Offene Punkte".
+    { id = "RUSTSEC-2026-0543", reason = "nur indirekt über rmcp und russh-sftp eingebunden; keine Sicherheitslücke, kein Ersatz in den betroffenen Crates" },
+]
+
+[licenses]
+# Erlaubt sind genau die Lizenzen, die im Abhängigkeitsgraphen tatsächlich
+# vorkommen und mit einer MIT-lizenzierten, als Binary verteilten Anwendung
+# vereinbar sind. Bei Ausdrücken mit OR genügt es, wenn eine der Alternativen
+# hier steht; deshalb fehlen z. B. Unlicense, BSD-1-Clause, die
+# LLVM-Ausnahme und LGPL (r-efi), obwohl sie in Lizenzausdrücken auftauchen.
+#
+# Eine neue Lizenz wird erst nach Prüfung aufgenommen. Copyleft-Lizenzen
+# (GPL, LGPL, AGPL, MPL, EUPL, SSPL …) stehen bewusst nicht in der Liste.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "0BSD",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+# Meldet Einträge der Liste, die kein Crate mehr benötigt, damit die Liste
+# nicht unbemerkt weiter wird als nötig.
+unused-allowed-license = "warn"
+exceptions = []
+
+# rmcp gibt im Manifest nur „Apache-2.0" an. Laut der mitgelieferten
+# LICENSE-Datei stehen Beiträge, für die noch keine Zustimmung zur
+# Umlizenzierung vorliegt, weiterhin unter MIT. Die Klarstellung gilt nur,
+# solange die Datei unverändert ist; ändert sie sich mit einem Update, greift
+# wieder die Angabe aus dem Manifest und der Eintrag ist neu zu prüfen.
+[[licenses.clarify]]
+crate = "rmcp"
+expression = "Apache-2.0 AND MIT"
+license-files = [{ path = "LICENSE", hash = 0xacd4b7b1 }]
+
+[[licenses.clarify]]
+crate = "rmcp-macros"
+expression = "Apache-2.0 AND MIT"
+license-files = [{ path = "LICENSE", hash = 0xacd4b7b1 }]
+
+# Für ring (geprüft: 0.17.14) ist keine Klarstellung nötig: Das Manifest
+# enthält einen gültigen SPDX-Ausdruck („Apache-2.0 AND ISC"), und die
+# mitgelieferten Lizenzdateien enthalten keine OpenSSL-/SSLeay-Lizenz.
+
+[licenses.private]
+# Die eigenen Workspace-Crates werden nicht veröffentlicht und deshalb von
+# der Lizenzprüfung ausgenommen. Das greift nur für Crates mit
+# `publish = false` im Manifest (siehe docs/lizenzen.md, „Offene Punkte").
+ignore = true
+
+[bans]
+# Mehrere Versionen desselben Crates vergrößern Binary und Prüfaufwand,
+# sind aber kein Fehler.
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# Abhängigkeiten ausschließlich aus crates.io; keine Git-Quellen und keine
+# fremden Registries.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

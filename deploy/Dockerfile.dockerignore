@@ -1,0 +1,7 @@
+# Only what the build needs goes into the build context.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!LICENSE
+!THIRD_PARTY_NOTICES.md

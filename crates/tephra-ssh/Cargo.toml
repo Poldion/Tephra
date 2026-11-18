@@ -1,0 +1,32 @@
+[package]
+name = "tephra-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait = "0.1.92"
+rand = "0.10"
+russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-sftp = "3.0.1"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["net", "rt", "sync", "time", "io-util", "macros"] }
+tracing = "0.1.44"
+tephra-model.workspace = true
+tephra-transport.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["full"] }
+
+[features]
+# Stellt einen SSH-Server für Tests bereit (siehe `tephra_ssh::testing`).
+testing = []
+
+[[example]]
+name = "test_server"
+required-features = ["testing"]
+
+[lints]
+workspace = true
