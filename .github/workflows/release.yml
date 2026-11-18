@@ -141,7 +141,9 @@ jobs:
           mkdir dist
           cp app/build/app/outputs/flutter-apk/app-release.apk "dist/$apk"
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
-          signed="$("$apksigner" verify --print-certs "dist/$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          # The wording of the line differs between versions of apksigner; only the digest matters.
+          "$apksigner" verify --print-certs "dist/$apk" | tee certs.txt
+          signed="$(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' certs.txt | awk '{print $NF}' | sort -u)"
           test "$signed" = "$CERTIFICATE" || { echo "Signed with an unexpected certificate: $signed"; exit 1; }
           cd dist
           sha256sum "$apk" > "$apk.sha256"
