@@ -6,7 +6,7 @@
 > kleinen, selbst gehosteten Sync-Server, der nur Chiffrate zu sehen bekommt.
 
 **Lizenz:** MIT · **Sprache:** Rust, Dart · **Läuft auf:** Windows, Linux (Kommandozeile und Sync-Server),
-Windows, Android (App) · **Stand:** in Entwicklung, noch keine Veröffentlichung
+Windows, Android (App) · **Stand:** Vorabversion, in Entwicklung
 
 ![Tephra unter Windows: die Hostliste](docs/bilder/hosts.png)
 
@@ -42,12 +42,13 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 
 - In der App fehlen noch Abgleich, MCP-Freigaben, Snippets, Portweiterleitungen, Dateiübertragung, die
   Wiederherstellung mit dem Wiederherstellungsschlüssel und das automatische Sperren; dafür gibt es die Kommandozeile,
-  die unter Windows denselben Tresor verwendet. Unter Linux ist die App noch nicht gebaut worden. Die Android-Fassung
-  ist bisher nur im Emulator erprobt, hat noch kein eigenes App-Symbol und keinen eigenen Signaturschlüssel; ohne
+  die unter Windows denselben Tresor verwendet. Unter Linux lässt sich die App bauen, ist aber nie gestartet worden;
+  deshalb gibt es sie dort nicht zum Herunterladen. Die Android-Fassung ist bisher nur im Emulator erprobt; ohne
   Abgleich in der App teilt sie ihren Tresor noch nicht mit anderen Geräten.
 - Entfernte Portweiterleitungen, Anmeldung über einen SSH-Agenten und andere VPN-Protokolle als WireGuard.
 - Proxys (SOCKS5, HTTP) und Host-Gruppen sind im Kern umgesetzt, haben aber noch keine Befehle.
-- Fertige Programme, Installer und ein veröffentlichtes Docker-Image. Vorerst wird aus dem Quelltext gebaut.
+- Installer, signierte Windows-Programme und ein veröffentlichtes Docker-Image. Die Downloads sind einfache Archive;
+  Windows warnt vor einem unbekannten Herausgeber.
 - Die Kommandozeile spricht bisher nur Deutsch.
 - Entwickelt wird unter Windows. Die Linux-Fassung wird bisher nur durch die automatischen Tests der CI geprüft.
 - Der kryptografische Entwurf wurde noch von niemandem außerhalb des Projekts geprüft. Lies das
@@ -70,6 +71,19 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 | **Sync-Server** | Ein Programm mit einer SQLite-Datei; Registrierung offen, mit Einladungscode oder geschlossen; Obergrenzen je Konto; Fehlversuche bei der Anmeldung je Benutzername und Absender begrenzt |
 
 ## Schnellstart
+
+### Herunterladen
+
+Auf der [Releases-Seite](https://github.com/Poldion/Tephra/releases) liegen zu jeder Version:
+
+- `Tephra-<Version>-windows-x64.zip` – die App (`tephra-app.exe`), die Kommandozeile `tephra.exe` und der Sync-Server
+  `tephra-server.exe`. Irgendwohin entpacken; installiert werden muss nichts.
+- `Tephra-<Version>-linux-x64.tar.gz` – `tephra` und `tephra-server`, statisch gelinkt, dazu eine systemd-Unit für
+  den Server.
+- `Tephra-<Version>.apk` – die Android-App (ab Android 7). Ihr Signaturzertifikat hat den SHA-256-Fingerabdruck
+  `6A:50:B9:6C:4C:67:9B:D9:9A:C2:FE:7C:8A:DE:CF:F6:27:22:EF:EC:CB:D3:F5:75:70:54:8D:0F:4C:D3:6D:E9`.
+
+Zu jeder Datei gibt es eine Prüfsumme (`.sha256`).
 
 ### Bauen
 

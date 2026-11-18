@@ -32,9 +32,13 @@ with platform 36 and NDK 28.2 (`sdkmanager "ndk;28.2.13676358"`), and the Rust t
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 ```
 
-The release build is signed with the debug key for now (`android/app/build.gradle.kts`); replace that before
-publishing. On Android the vault lives in the private data folder of the app and is excluded from backup
-(`android/app/src/main/res/xml/data_extraction_rules.xml`).
+The release build is signed with the project's key when `TEPHRA_KEYSTORE`, `TEPHRA_KEYSTORE_PASSWORD`,
+`TEPHRA_KEY_ALIAS` and `TEPHRA_KEY_PASSWORD` are set, as the release workflow does; without them it falls back to the
+debug key, which is fine for trying the app but never for a release. On Android the vault lives in the private data
+folder of the app and is excluded from backup (`android/app/src/main/res/xml/data_extraction_rules.xml`).
+
+The app icon is drawn by `tool/make_icons.py` (needs Pillow); it writes the Windows icon and the Android launcher
+icons. The adaptive Android icon and the logo inside the app (`lib/src/ui/logo.dart`) repeat the same geometry.
 
 The Rust crate is compiled by the build hook in `hook/build.dart`; there is no separate step.
 

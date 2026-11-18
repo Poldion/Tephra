@@ -5,6 +5,7 @@ import '../paths.dart';
 import '../rust/api/app.dart';
 import '../text.dart';
 import 'common.dart';
+import 'logo.dart';
 
 /// Anmeldung: Tresor anlegen oder entsperren.
 class GateScreen extends StatefulWidget {
@@ -90,7 +91,7 @@ class _GateScreenState extends State<GateScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(Icons.terminal_rounded, size: 56, color: theme.colorScheme.primary),
+                const Center(child: TephraLogo(size: 64)),
                 const SizedBox(height: 12),
                 Text(appName, style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
                 const SizedBox(height: 28),

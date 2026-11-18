@@ -7,6 +7,7 @@ import '../text.dart';
 import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
+import 'logo.dart';
 import 'terminal_page.dart';
 import 'vpn_page.dart';
 
@@ -62,12 +63,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _about() {
-    final theme = Theme.of(context);
     showAboutDialog(
       context: context,
       applicationName: appName,
       applicationVersion: appVersion,
-      applicationIcon: Icon(Icons.terminal_rounded, size: 40, color: theme.colorScheme.primary),
+      applicationIcon: const TephraLogo(size: 44),
       applicationLegalese: [
         'Copyright © 2026 Pold',
         t('Veröffentlicht unter der MIT-Lizenz.', 'Released under the MIT license.'),
@@ -137,10 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onDestinationSelected: (index) => setState(() => _index = index),
               labelType: NavigationRailLabelType.all,
               backgroundColor: scheme.surfaceContainer,
-              leading: Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 12),
-                child: Icon(Icons.terminal_rounded, color: scheme.primary, size: 30),
-              ),
+              leading: Padding(padding: const EdgeInsets.only(top: 8, bottom: 12), child: const TephraLogo(size: 34)),
               trailing: Expanded(
                 child: Align(
                   alignment: Alignment.bottomCenter,

@@ -6,7 +6,7 @@
 > self-hosted sync server that only ever sees ciphertext.
 
 **License:** MIT · **Language:** Rust, Dart · **Runs on:** Windows, Linux (command line and sync server),
-Windows, Android (app) · **Status:** in development, no release yet
+Windows, Android (app) · **Status:** preview, in development
 
 ![Tephra on Windows: the host list](docs/bilder/hosts.png)
 
@@ -38,12 +38,13 @@ The project is under active development. **What exists today:**
 **Not there yet:**
 
 - The app still lacks sync, MCP permissions, snippets, port forwarding, file transfer, recovery with the recovery key
-  and automatic locking; the command line covers these and, on Windows, uses the same vault. The app has not been
-  built on Linux yet. The Android version has only been tried in the emulator so far, has no app icon and no signing
-  key of its own yet, and without sync in the app it does not share its vault with other devices.
+  and automatic locking; the command line covers these and, on Windows, uses the same vault. On Linux the app builds
+  but has never been run, so there is no download for it. The Android version has only been tried in the emulator so
+  far, and without sync in the app it does not share its vault with other devices.
 - Remote port forwarding, login through an SSH agent and VPN protocols other than WireGuard.
 - Proxies (SOCKS5, HTTP) and host groups are implemented in the core but have no commands yet.
-- Prebuilt binaries, installers and a published Docker image. For now you build from source.
+- Installers, signed Windows programs and a published Docker image. The downloads are plain archives; Windows will
+  warn about an unknown publisher.
 - The command line speaks German only.
 - Development happens on Windows. The Linux build is so far exercised by the automated tests in CI only.
 - The cryptographic design has not been reviewed by a third party. Read the [threat model](docs/threat-model.md)
@@ -66,6 +67,19 @@ The project is under active development. **What exists today:**
 | **Sync server** | One binary with an SQLite file; registration open, by invite code or closed; quota per account; failed logins limited per user name and sender |
 
 ## Quick start
+
+### Download
+
+The [releases page](https://github.com/Poldion/Tephra/releases) has, for each version:
+
+- `Tephra-<version>-windows-x64.zip` – the app (`tephra-app.exe`), the command line `tephra.exe` and the sync server
+  `tephra-server.exe`. Unpack it anywhere; nothing needs to be installed.
+- `Tephra-<version>-linux-x64.tar.gz` – `tephra` and `tephra-server`, statically linked, plus a systemd unit for the
+  server.
+- `Tephra-<version>.apk` – the Android app (Android 7 or newer). Its signing certificate has the SHA-256 fingerprint
+  `6A:50:B9:6C:4C:67:9B:D9:9A:C2:FE:7C:8A:DE:CF:F6:27:22:EF:EC:CB:D3:F5:75:70:54:8D:0F:4C:D3:6D:E9`.
+
+Each file comes with a `.sha256` checksum.
 
 ### Build
 

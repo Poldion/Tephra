@@ -4,10 +4,10 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0] – 2026-11-18
 
-Nothing has been released yet. This section describes what the repository contains today: the command line `tephra` and
-the sync server `tephra-server` for Windows and Linux, and a first version of the graphical app for Windows and Android.
+First release, a preview: the command line `tephra` and the sync server `tephra-server` for Windows and Linux, and a
+first version of the graphical app for Windows and Android.
 
 ### Added
 
@@ -64,6 +64,8 @@ the sync server `tephra-server` for Windows and Linux, and a first version of th
   the same vault file as `tephra`. On Android the vault lives in the private data folder of the app and is excluded from
   cloud backup and device transfer; a row of extra keys (Esc, Tab, Ctrl, arrows and common symbols) sits above the
   on-screen keyboard.
+- **Downloads:** every release carries the app, command line and sync server for Windows, statically linked command
+  line and sync server for Linux, and the signed Android app, each with a SHA-256 checksum.
 - **Background service:** `tephra daemon` picks up changes that other `tephra` commands make to the same vault file.
 - **Deployment:** Dockerfile, Compose file with Caddy and a systemd unit for the sync server in `deploy/`.
 - **Project:** CI on Linux and Windows (format, Clippy, tests, license and advisory check), manual, threat model,

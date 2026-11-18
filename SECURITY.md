@@ -9,8 +9,7 @@ You will get an answer within a few days.
 Helpful in a report: the version (`tephra --version`), the operating system, the steps to reproduce and what an attacker
 gains. Please leave out real credentials, keys and vault files.
 
-There is no release yet. Until the first one, fixes go into `main`; afterwards the latest release is the supported
-version.
+The latest release is the supported version; fixes go into a new release.
 
 ## What Tephra protects
 

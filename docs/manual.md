@@ -25,7 +25,8 @@ this manual quotes it.
 
 ## Installation
 
-There are no prebuilt programs yet. Build from source with Rust 1.90 or newer and a C compiler:
+Prebuilt programs for Windows and Linux are on the [releases page](https://github.com/Poldion/Tephra/releases): unpack
+the archive and copy `tephra` to a folder on your `PATH`. Or build from source with Rust 1.90 or newer and a C compiler:
 
 ```bash
 git clone https://github.com/Poldion/Tephra.git

@@ -24,7 +24,9 @@ Kommandozeile. Unter Windows verwenden beide denselben Tresor.
 
 ## Installation
 
-Fertige Programme gibt es noch nicht. Gebaut wird aus dem Quelltext mit Rust 1.90 oder neuer und einem C-Compiler:
+Fertige Programme für Windows und Linux liegen auf der [Releases-Seite](https://github.com/Poldion/Tephra/releases):
+Archiv entpacken und `tephra` in einen Ordner kopieren, der im `PATH` steht. Oder aus dem Quelltext bauen, mit Rust 1.90
+oder neuer und einem C-Compiler:
 
 ```bash
 git clone https://github.com/Poldion/Tephra.git

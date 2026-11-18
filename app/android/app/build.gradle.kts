@@ -28,11 +28,20 @@ android {
         versionName = flutter.versionName
     }
 
+    // Signiert wird mit dem eigenen Schlüssel, wenn er angegeben ist (TEPHRA_KEYSTORE,
+    // TEPHRA_KEYSTORE_PASSWORD, TEPHRA_KEY_ALIAS, TEPHRA_KEY_PASSWORD). Ohne ihn nimmt der Build den
+    // Debug-Schlüssel, damit sich die App zum Ausprobieren bauen lässt; so entsteht nie ein Release.
+    val keystore = System.getenv("TEPHRA_KEYSTORE")
+    val releaseSigning = if (keystore != null) signingConfigs.create("release") {
+        storeFile = file(keystore)
+        storePassword = System.getenv("TEPHRA_KEYSTORE_PASSWORD")
+        keyAlias = System.getenv("TEPHRA_KEY_ALIAS")
+        keyPassword = System.getenv("TEPHRA_KEY_PASSWORD")
+    } else signingConfigs.getByName("debug")
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = releaseSigning
         }
     }
 }
