@@ -87,9 +87,23 @@ jobs:
           port="$(sed -n 's/^port=//p' "$RUNNER_TEMP/server.txt")"
           mkdir -p "$RUNNER_TEMP/shots"
           cd app
-          TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
-            flutter test integration_test/app_test.dart -d linux --reporter expanded \
-            --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots"
+          app_test() {
+            rm -rf "$RUNNER_TEMP/vault"
+            TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
+              flutter test integration_test/app_test.dart -d linux --reporter expanded \
+              --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots"
+          }
+          # Narrowing down why the app ends in the middle of the test on Linux: keep what a crash leaves
+          # behind, then try again with SIGPIPE ignored.
+          ulimit -c unlimited
+          sudo sysctl -w kernel.core_pattern="$RUNNER_TEMP/core.%e.signal-%s" > /dev/null
+          if ! app_test; then
+            ls -l "$RUNNER_TEMP"/core.* 2>/dev/null || echo "No core dump: the app was not killed by a crash signal."
+            sudo dmesg | tail -n 15
+            trap '' PIPE
+            if app_test; then echo "The test passes when SIGPIPE is ignored."; else echo "It fails with SIGPIPE ignored as well."; fi
+            exit 1
+          fi
       - uses: actions/upload-artifact@v7
         if: matrix.target == 'linux' && always()
         with:

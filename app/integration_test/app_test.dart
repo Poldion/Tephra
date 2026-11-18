@@ -80,6 +80,9 @@ Future<void> _type(WidgetTester tester, Finder finder, String text) async {
   await tester.pump(const Duration(milliseconds: 100));
 }
 
+/// Meldet den Abschnitt, der beginnt. Bricht der Lauf ab, zeigt die Ausgabe, wo.
+void _step(String name) => debugPrint('Abschnitt: $name');
+
 String _screen(TerminalSession session) => session.terminal.buffer.getText();
 
 void main() {
@@ -96,6 +99,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // ---- Tresor anlegen
+    _step('Tresor anlegen');
     expect(find.byType(TextField), findsNWidgets(2));
     await _type(tester, find.byType(TextField).at(0), _password);
     await _type(tester, find.byType(TextField).at(1), 'etwas anderes');
@@ -176,6 +180,7 @@ void main() {
     await _shot(tester, '09-hosts');
 
     // ---- Verbinden: unbekannter Hostschlüssel, dann Shell
+    _step('verbinden');
     await _tap(tester, find.text('Testserver'));
     await _appears(tester, find.text(t('Unbekannter Host', 'Unknown host')));
     await _shot(tester, '10-hostschluessel');
@@ -198,28 +203,34 @@ void main() {
     await _shot(tester, '11-terminal');
 
     // ---- Shell beenden und neu verbinden: der Schlüssel ist jetzt bekannt
+    _step('Shell beenden');
     session.terminal.textInput('exit');
     await _until(tester, () => session.state == SessionState.closed, 'Sitzungsende');
     await _shot(tester, '12-beendet');
+    _step('neu verbinden');
     await _tap(tester, find.text(t('Neu verbinden', 'Reconnect')));
     await _until(tester, () => session.state == SessionState.connected, 'zweite Verbindung');
     expect(find.text(t('Unbekannter Host', 'Unknown host')), findsNothing);
 
     // ---- Sperren beendet die Sitzung; falsches Passwort wird abgewiesen
+    _step('sperren');
     await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
     await _appears(tester, find.text(t('Tresor entsperren', 'Unlock vault')));
     expect(isUnlocked(), isFalse);
+    _step('falsches Passwort');
     await _type(tester, find.byType(TextField).first, 'falsch');
     await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
     await _until(tester, () => tester.widget<FilledButton>(find.byType(FilledButton)).onPressed != null, 'Ablehnung');
     expect(isUnlocked(), isFalse);
     await _shot(tester, '13-falsches-passwort');
+    _step('entsperren');
     await _type(tester, find.byType(TextField).first, _password);
     await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
     await _appears(tester, find.text('Testserver'));
     expect(find.byType(SessionView), findsNothing);
 
     // ---- Nach dem Entsperren verbindet der Host ohne Rückfrage
+    _step('verbinden nach dem Entsperren');
     await _tap(tester, find.text('Testserver'));
     await _appears(tester, find.byType(SessionView));
     session = tester.widget<SessionView>(find.byType(SessionView)).session;
