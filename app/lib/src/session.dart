@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:xterm/xterm.dart';
 
+import 'files.dart';
+import 'keys.dart';
 import 'rust/api/app.dart';
 import 'text.dart';
 
@@ -33,17 +35,75 @@ class TerminalSession extends ChangeNotifier {
   int? _id;
   int _run = 0;
   bool _disposed = false;
+
+  /// Ob das Ende der Sitzung schon im Terminal steht (Shell beendet oder Fehler gemeldet).
+  bool _explained = false;
   Future<void> _writes = Future.value();
   late ByteConversionSink _decoder;
 
   bool get needsAttention => prompt != null;
 
-  /// Zusatztaste Strg der Bildschirmtastatur: gilt für das nächste Zeichen.
-  bool get ctrlArmed => _ctrlArmed;
-  bool _ctrlArmed = false;
+  /// Ob statt des Terminals die Dateien des Hosts gezeigt werden.
+  bool get showFiles => _showFiles;
+  bool _showFiles = false;
 
-  void toggleCtrl() {
-    _ctrlArmed = !_ctrlArmed;
+  set showFiles(bool value) {
+    if (_showFiles == value) return;
+    _showFiles = value;
+    notifyListeners();
+  }
+
+  /// Dateien des Hosts; entstehen beim ersten Zugriff.
+  FilesController get files => _files ??= FilesController(host.id);
+  FilesController? _files;
+
+  /// Zusatztasten der Tastenleiste am Telefon.
+  ModifierState get ctrl => _ctrl;
+  ModifierState get alt => _alt;
+  ModifierState _ctrl = ModifierState.off;
+  ModifierState _alt = ModifierState.off;
+
+  /// Ob die Tastenleiste gerade die Funktionstasten zeigt.
+  bool get functionKeys => _functionKeys;
+  bool _functionKeys = false;
+
+  /// Solange eine Taste der Leiste gedrückt wird, hat das Terminal Strg und Alt schon eingerechnet.
+  bool _keyPress = false;
+
+  void cycleCtrl() {
+    _ctrl = _ctrl.next;
+    notifyListeners();
+  }
+
+  void cycleAlt() {
+    _alt = _alt.next;
+    notifyListeners();
+  }
+
+  void toggleFunctionKeys() {
+    _functionKeys = !_functionKeys;
+    notifyListeners();
+  }
+
+  /// Taste der Tastenleiste, zusammen mit den gerade aktiven Zusatztasten.
+  void pressKey(TerminalKey key) {
+    _keyPress = true;
+    try {
+      terminal.keyInput(key, ctrl: _ctrl.active, alt: _alt.active);
+    } finally {
+      _keyPress = false;
+    }
+    _releaseModifiers();
+  }
+
+  /// Zeichen der Tastenleiste; Strg und Alt wirken wie bei getipptem Text.
+  void typeText(String text) => terminal.textInput(text);
+
+  void _releaseModifiers() {
+    final (ctrl, alt) = (_ctrl.afterKey, _alt.afterKey);
+    if (ctrl == _ctrl && alt == _alt) return;
+    _ctrl = ctrl;
+    _alt = alt;
     notifyListeners();
   }
 
@@ -51,6 +111,7 @@ class TerminalSession extends ChangeNotifier {
     final run = ++_run;
     _id = null;
     prompt = null;
+    _explained = false;
     state = SessionState.connecting;
     status = t('Verbindung wird aufgebaut …', 'Connecting …');
     _writes = Future.value();
@@ -88,6 +149,7 @@ class TerminalSession extends ChangeNotifier {
       case SessionEvent_Exit(:final code):
         final suffix = code == null ? '' : ' (${t('Code', 'code')} $code)';
         _note('${t('Sitzung beendet', 'Session ended')}$suffix');
+        _explained = true;
       case SessionEvent_Failed(:final message):
         _onFailure(run, message);
         return;
@@ -103,11 +165,16 @@ class TerminalSession extends ChangeNotifier {
     final text = clean(message).trim();
     status = text.split('\n').first;
     _note(text, error: true);
+    _explained = true;
     notifyListeners();
   }
 
   void _onClosed(int run) {
     if (run != _run || _disposed || state == SessionState.closed) return;
+    // Reißt die Verbindung ab, endet die Sitzung ohne ein Wort des Servers.
+    if (state == SessionState.connected && !_explained) {
+      _note(t('Verbindung getrennt', 'Connection lost'), error: true);
+    }
     state = SessionState.closed;
     prompt = null;
     _id = null;
@@ -127,13 +194,9 @@ class TerminalSession extends ChangeNotifier {
     final id = _id;
     if (id == null || state != SessionState.connected) return;
     var bytes = utf8.encode(data);
-    if (_ctrlArmed) {
-      _ctrlArmed = false;
-      // Strg+Buchstabe ist das Steuerzeichen mit den unteren fünf Bits.
-      if (bytes.length == 1 && bytes[0] >= 0x3F && bytes[0] < 0x7F) {
-        bytes = Uint8List.fromList([bytes[0] == 0x3F ? 0x7F : bytes[0] & 0x1F]);
-      }
-      notifyListeners();
+    if (!_keyPress && (_ctrl.active || _alt.active)) {
+      bytes = applyModifiers(bytes, ctrl: _ctrl.active, alt: _alt.active);
+      _releaseModifiers();
     }
     // Eingaben nacheinander senden, damit ihre Reihenfolge erhalten bleibt.
     _writes = _writes.then((_) => sessionWrite(sessionId: id, data: bytes)).catchError((Object _) {});
@@ -188,6 +251,7 @@ class TerminalSession extends ChangeNotifier {
     _disposed = true;
     final id = _id;
     if (id != null) sessionClose(sessionId: id).ignore();
+    _files?.dispose();
     dispose();
   }
 }

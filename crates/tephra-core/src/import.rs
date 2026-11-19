@@ -154,15 +154,19 @@ impl Core {
                                     .push(format!("{}: Schlüsseldatei {file} ist nicht lesbar", entry.alias));
                                 None
                             }
-                            Ok(pem) => match tephra_ssh::keys::inspect(&pem, None) {
-                                Err(_) => {
+                            Ok(pem) => match tephra_ssh::keys::import(&pem, None) {
+                                Err(tephra_ssh::SshError::KeyPassphraseMissing) => {
                                     report.warnings.push(format!(
                                         "{}: Schlüssel {file} ist mit einer Passphrase geschützt – bitte gesondert einlesen",
                                         entry.alias
                                     ));
                                     None
                                 }
-                                Ok(info) => {
+                                Err(error) => {
+                                    report.warnings.push(format!("{}: Schlüssel {file}: {error}", entry.alias));
+                                    None
+                                }
+                                Ok((pem, info)) => {
                                     let label =
                                         path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                                     let key = SshKey {

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../rust/api/app.dart';
 import '../text.dart';
 import 'common.dart';
+import 'sync_ui.dart';
 
 String _methodName(String method) => switch (method) {
   'password' => t('Passwort', 'Password'),
@@ -19,7 +20,10 @@ class IdentitiesPage extends StatefulWidget {
   State<IdentitiesPage> createState() => _IdentitiesPageState();
 }
 
-class _IdentitiesPageState extends State<IdentitiesPage> {
+class _IdentitiesPageState extends State<IdentitiesPage> with ReloadOnSync<IdentitiesPage> {
+  @override
+  void reloadFromVault() => _reload();
+
   List<IdentityView> _identities = [];
   List<KeyView> _keys = [];
   String? _error;

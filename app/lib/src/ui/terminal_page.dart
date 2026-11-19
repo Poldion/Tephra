@@ -8,6 +8,8 @@ import '../session.dart';
 import '../state.dart';
 import '../text.dart';
 import 'common.dart';
+import 'extra_keys.dart';
+import 'files_view.dart';
 
 /// Die offenen Terminalsitzungen als Reiter.
 class TerminalPage extends StatelessWidget {
@@ -40,16 +42,23 @@ class TerminalPage extends StatelessWidget {
         Container(
           color: scheme.surfaceContainer,
           height: 42,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
+          child: Row(
             children: [
-              for (final session in state.sessions)
-                _Tab(
-                  session: session,
-                  selected: session == active,
-                  onSelect: () => state.select(session),
-                  onClose: () => state.close(session),
+              Expanded(
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final session in state.sessions)
+                      _Tab(
+                        session: session,
+                        selected: session == active,
+                        onSelect: () => state.select(session),
+                        onClose: () => state.close(session),
+                      ),
+                  ],
                 ),
+              ),
+              _ViewSwitch(session: active),
             ],
           ),
         ),
@@ -57,6 +66,44 @@ class TerminalPage extends StatelessWidget {
           child: SessionView(key: ObjectKey(active), session: active, onClose: () => state.close(active)),
         ),
       ],
+    );
+  }
+}
+
+/// Umschalter der aktiven Sitzung zwischen Terminal und Dateien.
+class _ViewSwitch extends StatelessWidget {
+  const _ViewSwitch({required this.session});
+
+  final TerminalSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget button({required IconData icon, required String tooltip, required bool files}) {
+      final selected = session.showFiles == files;
+      return IconButton(
+        key: ValueKey(files ? 'view-files' : 'view-terminal'),
+        tooltip: tooltip,
+        isSelected: selected,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          backgroundColor: selected ? scheme.secondaryContainer : null,
+          foregroundColor: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
+        ),
+        icon: Icon(icon, size: 20),
+        onPressed: () => session.showFiles = files,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button(icon: Icons.terminal_rounded, tooltip: 'Terminal', files: false),
+          button(icon: Icons.folder_outlined, tooltip: t('Dateien', 'Files'), files: true),
+        ],
+      ),
     );
   }
 }
@@ -192,6 +239,26 @@ class _SessionViewState extends State<SessionView> {
           });
         }
         _hadPrompt = prompt != null;
+        if (session.showFiles) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: session.state == SessionState.connected
+                    ? FilesView(files: session.files, hostLabel: session.host.label)
+                    : EmptyState(
+                        icon: Icons.folder_off_outlined,
+                        title: t('Keine Verbindung', 'Not connected'),
+                        hint: t(
+                          'Die Dateien des Hosts stehen bereit, sobald die Sitzung verbunden ist.',
+                          'The files of the host are available as soon as the session is connected.',
+                        ),
+                      ),
+              ),
+              _StatusBar(session: session, onClose: widget.onClose),
+            ],
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -233,68 +300,11 @@ class _SessionViewState extends State<SessionView> {
                 ],
               ),
             ),
-            if (!_hardwareKeyboard && session.state == SessionState.connected) _ExtraKeys(session: session),
+            if (!_hardwareKeyboard && session.state == SessionState.connected) ExtraKeys(session: session),
             _StatusBar(session: session, onClose: widget.onClose),
           ],
         );
       },
-    );
-  }
-}
-
-/// Tasten, die der Bildschirmtastatur fehlen.
-class _ExtraKeys extends StatelessWidget {
-  const _ExtraKeys({required this.session});
-
-  final TerminalSession session;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final terminal = session.terminal;
-    Widget key(String label, VoidCallback onTap, {bool active = false}) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      child: Material(
-        color: active ? scheme.primary : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          // Der Fokus bleibt beim Terminal, sonst verschwände die Tastatur.
-          canRequestFocus: false,
-          onTap: onTap,
-          child: Container(
-            constraints: const BoxConstraints(minWidth: 42),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              style: monoStyle(context, size: 14).copyWith(color: active ? scheme.onPrimary : scheme.onSurface),
-            ),
-          ),
-        ),
-      ),
-    );
-    return Container(
-      color: scheme.surfaceContainer,
-      height: 44,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-        children: [
-          key('Esc', () => terminal.keyInput(TerminalKey.escape)),
-          key('Tab', () => terminal.keyInput(TerminalKey.tab)),
-          key(t('Strg', 'Ctrl'), session.toggleCtrl, active: session.ctrlArmed),
-          key('↑', () => terminal.keyInput(TerminalKey.arrowUp)),
-          key('↓', () => terminal.keyInput(TerminalKey.arrowDown)),
-          key('←', () => terminal.keyInput(TerminalKey.arrowLeft)),
-          key('→', () => terminal.keyInput(TerminalKey.arrowRight)),
-          for (final char in ['|', '/', '-', '~', '_', ':', '*', '&']) key(char, () => terminal.textInput(char)),
-          key(t('Pos1', 'Home'), () => terminal.keyInput(TerminalKey.home)),
-          key(t('Ende', 'End'), () => terminal.keyInput(TerminalKey.end)),
-          key(t('Bild↑', 'PgUp'), () => terminal.keyInput(TerminalKey.pageUp)),
-          key(t('Bild↓', 'PgDn'), () => terminal.keyInput(TerminalKey.pageDown)),
-        ],
-      ),
     );
   }
 }

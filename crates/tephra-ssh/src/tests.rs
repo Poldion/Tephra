@@ -392,3 +392,63 @@ async fn socks_proxy_ueber_die_verbindung() {
     let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind").local_addr().expect("addr").port();
     assert!(matches!(socks.connect_tcp("127.0.0.1", closed).await, Err(TransportError::Proxy(_))));
 }
+
+#[tokio::test]
+async fn oeffentlichen_schluessel_auf_dem_host_eintragen() {
+    let server = TestServer::start().await;
+    let client = login(&server).await;
+    let first = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErster laptop";
+    let second = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIZweiter";
+    let read = || String::from_utf8(server.files.lock().expect("lock")["/.ssh/authorized_keys"].clone()).expect("text");
+
+    assert!(client.authorize_key(first).await.expect("eintragen"));
+    assert_eq!(read(), format!("{first}\n"));
+    // Derselbe Schlüssel steht kein zweites Mal da, auch nicht mit anderem Kommentar.
+    assert!(!client.authorize_key("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErster anderswo").await.expect("erneut"));
+    assert_eq!(read(), format!("{first}\n"));
+
+    // Vorhandene Einträge bleiben stehen, auch wenn der letzte ohne Zeilenende aufhört.
+    server.files.lock().expect("lock").insert(
+        "/.ssh/authorized_keys".into(),
+        format!("{first}\n# von Hand\nfrom=\"10.0.0.1\" {second}").into_bytes(),
+    );
+    assert!(
+        !client.authorize_key(second).await.expect("mit Optionen davor"),
+        "ein Eintrag mit Optionen zählt als vorhanden"
+    );
+    let third = "ssh-rsa AAAAB3NzaC1yc2EDritter";
+    assert!(client.authorize_key(third).await.expect("anhängen"));
+    assert_eq!(read(), format!("{first}\n# von Hand\nfrom=\"10.0.0.1\" {second}\n{third}\n"));
+
+    assert!(client.authorize_key("kein-schluessel").await.is_err());
+    assert!(client.authorize_key("ssh-ed25519 AAAA\nssh-ed25519 BBBB").await.is_err(), "nur eine Zeile");
+    client.disconnect().await;
+}
+
+#[tokio::test]
+async fn dateien_ueber_sftp_anlegen_umbenennen_loeschen() {
+    let server = TestServer::start().await;
+    let client = login(&server).await;
+    let sftp = client.sftp().await.expect("sftp");
+
+    sftp.create_dir("/daten").await.expect("ordner");
+    assert!(sftp.create_dir("/daten").await.is_err(), "ein vorhandener Ordner lässt sich nicht noch einmal anlegen");
+    let mut file = sftp.create("/daten/notiz.txt").await.expect("anlegen");
+    file.write_all(b"hallo datei").await.expect("schreiben");
+    file.shutdown().await.expect("schließen");
+
+    let names = |listing: russh_sftp::client::fs::ReadDir| listing.map(|entry| entry.file_name()).collect::<Vec<_>>();
+    assert_eq!(names(sftp.read_dir("/daten").await.expect("auflisten")), ["notiz.txt"]);
+    assert_eq!(sftp.read("/daten/notiz.txt").await.expect("lesen"), b"hallo datei");
+
+    assert!(sftp.remove_dir("/daten").await.is_err(), "ein gefüllter Ordner wird nicht gelöscht");
+    sftp.rename("/daten", "/archiv").await.expect("umbenennen");
+    assert_eq!(sftp.read("/archiv/notiz.txt").await.expect("lesen"), b"hallo datei");
+    assert!(sftp.metadata("/daten").await.is_err());
+
+    sftp.remove_file("/archiv/notiz.txt").await.expect("datei löschen");
+    assert!(names(sftp.read_dir("/archiv").await.expect("auflisten")).is_empty());
+    sftp.remove_dir("/archiv").await.expect("ordner löschen");
+    assert!(sftp.metadata("/archiv").await.is_err());
+    client.disconnect().await;
+}

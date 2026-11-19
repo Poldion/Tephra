@@ -114,15 +114,41 @@ fn normalize_url(server: &str) -> Result<String> {
     }
 }
 
+/// Wurzelzertifikate (DER), denen Verbindungen zum Server vertrauen, wenn das
+/// Programm sie nicht selbst beim Betriebssystem erfragen kann.
+static TRUST_ROOTS: std::sync::RwLock<Option<Vec<Vec<u8>>>> = std::sync::RwLock::new(None);
+
+/// Legt fest, welchen Wurzelzertifikaten Verbindungen zum Sync-Server
+/// vertrauen; sie ersetzen den Zertifikatsspeicher des Betriebssystems. Nötig
+/// unter Android: Dort kennt nur die App selbst die Zertifikate des Systems
+/// und des Nutzers und reicht sie hierher weiter. Unlesbare Einträge werden
+/// übergangen; zurück kommt die Zahl der brauchbaren.
+pub fn set_trust_roots(certificates: Vec<Vec<u8>>) -> usize {
+    let mut store = rustls::RootCertStore::empty();
+    let usable: Vec<Vec<u8>> = certificates
+        .into_iter()
+        .filter(|der| store.add(rustls::pki_types::CertificateDer::from(der.as_slice())).is_ok())
+        .collect();
+    let count = usable.len();
+    *TRUST_ROOTS.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(usable);
+    count
+}
+
 fn http_client() -> reqwest::Client {
     // Alle Verbindungen nutzen dieselbe Krypto-Bibliothek wie der Rest des Programms.
     let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(MAX_WAIT_SECS + 20))
-        .user_agent(concat!("Tephra/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .unwrap_or_default()
+        .user_agent(concat!("Tephra/", env!("CARGO_PKG_VERSION")));
+    let roots = TRUST_ROOTS.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+    let builder = match roots {
+        Some(roots) => builder.tls_certs_only(roots.iter().filter_map(|der| reqwest::Certificate::from_der(der).ok())),
+        // Android nennt seine Zertifikate nur der App; solange sie fehlen, gilt keines als vertrauenswürdig.
+        None if cfg!(target_os = "android") => builder.tls_certs_only(Vec::new()),
+        None => builder,
+    };
+    builder.build().unwrap_or_default()
 }
 
 /// Wertet eine Antwort aus: Erfolg als `T`, Fehler als [`SyncError`].

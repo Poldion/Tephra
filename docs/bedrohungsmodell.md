@@ -217,6 +217,11 @@ Hosts gefunden hat.
 
 ## Ausdrücklich außerhalb des Schutzumfangs
 
+- **Wer die Veröffentlichungen auf GitHub kontrolliert.** Die App sucht dort einmal am Tag nach Aktualisierungen
+  (abschaltbar) und installiert eine nur, wenn du zustimmst. Die Prüfsumme, die sie prüft, stammt vom selben Ort wie
+  die Datei: Sie schützt vor einem beschädigten Download, nicht vor einer gefälschten Veröffentlichung. Unter Android
+  lehnt das System zusätzlich eine App ab, die nicht mit demselben Schlüssel signiert ist; die Windows-Programme und
+  das AppImage sind nicht signiert.
 - **Schadsoftware auf dem Gerät** oder jedes Programm, das unter deinem eigenen Konto läuft, während der Tresor
   entsperrt ist. Es kann Speicher lesen, das Master-Passwort beim Tippen mitschneiden, das MCP-Token aus der
   Konfiguration des Clients lesen und mit dem Dienst sprechen.

@@ -409,6 +409,68 @@ impl SshClient {
             .map_err(|e| SshError::Protocol(format!("SFTP konnte nicht gestartet werden: {e}")))
     }
 
+    /// Trägt einen öffentlichen Schlüssel beim angemeldeten Benutzer in
+    /// `~/.ssh/authorized_keys` ein, sodass er sich künftig damit anmelden kann.
+    /// Gibt `false` zurück, wenn der Schlüssel dort schon steht.
+    ///
+    /// Das läuft über SFTP und braucht deshalb keine bestimmte Shell auf dem Host.
+    pub async fn authorize_key(&self, public_key: &str) -> Result<bool> {
+        use russh_sftp::protocol::{FileAttributes, OpenFlags};
+        use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+        let line = public_key.trim();
+        // Typ und Schlüssel; ein Kommentar dahinter spielt für den Vergleich keine Rolle.
+        let wanted: Vec<&str> = line.split_whitespace().take(2).collect();
+        if wanted.len() < 2 || line.chars().any(char::is_control) {
+            return Err(SshError::Key("das ist kein öffentlicher Schlüssel".into()));
+        }
+        let failed = |what: &str, error: russh_sftp::client::error::Error| {
+            SshError::Protocol(format!("{what} ist fehlgeschlagen: {error}"))
+        };
+        let sftp = self.sftp().await?;
+        let home = sftp.canonicalize(".").await.map_err(|e| failed("Das Ermitteln des Benutzerordners", e))?;
+        let dir = format!("{}/.ssh", home.trim_end_matches('/'));
+        let path = format!("{dir}/authorized_keys");
+        // Rechte wie bei ssh-keygen; kennt der Server das Setzen nicht, gelten seine Vorgaben.
+        let mode = |permissions: u32| FileAttributes { permissions: Some(permissions), ..FileAttributes::default() };
+        if !sftp.try_exists(dir.clone()).await.unwrap_or(false) {
+            sftp.create_dir(dir.clone()).await.map_err(|e| failed("Das Anlegen von ~/.ssh", e))?;
+            let _ = sftp.set_metadata(dir, mode(0o700)).await;
+        }
+        let known = sftp.try_exists(path.clone()).await.unwrap_or(false);
+        let existing = if known {
+            sftp.read(path.clone()).await.map_err(|e| failed("Das Lesen von authorized_keys", e))?
+        } else {
+            Vec::new()
+        };
+        let present = String::from_utf8_lossy(&existing)
+            .lines()
+            .any(|entry| entry.split_whitespace().collect::<Vec<_>>().windows(2).any(|pair| pair == wanted));
+        if present {
+            let _ = sftp.close().await;
+            return Ok(false);
+        }
+        // Angehängt wird, nie neu geschrieben: Bricht etwas ab, bleiben die vorhandenen Einträge unberührt.
+        let mut file = sftp
+            .open_with_flags(path.clone(), OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::APPEND)
+            .await
+            .map_err(|e| failed("Das Öffnen von authorized_keys", e))?;
+        let separator = if existing.is_empty() || existing.ends_with(b"\n") { "" } else { "\n" };
+        let written = async {
+            file.seek(std::io::SeekFrom::End(0)).await?;
+            file.write_all(format!("{separator}{line}\n").as_bytes()).await?;
+            file.shutdown().await
+        };
+        written
+            .await
+            .map_err(|e| SshError::Protocol(format!("Das Schreiben von authorized_keys ist fehlgeschlagen: {e}")))?;
+        if !known {
+            let _ = sftp.set_metadata(path, mode(0o600)).await;
+        }
+        let _ = sftp.close().await;
+        Ok(true)
+    }
+
     /// Trennt die Verbindung ordentlich.
     pub async fn disconnect(&self) {
         let _ = self.handle.disconnect(Disconnect::ByApplication, "", "").await;

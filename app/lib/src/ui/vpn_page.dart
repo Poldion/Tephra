@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../rust/api/app.dart';
 import '../text.dart';
 import 'common.dart';
+import 'sync_ui.dart';
 
 /// WireGuard-Profile: importieren, prüfen, löschen.
 class VpnPage extends StatefulWidget {
@@ -12,7 +13,10 @@ class VpnPage extends StatefulWidget {
   State<VpnPage> createState() => _VpnPageState();
 }
 
-class _VpnPageState extends State<VpnPage> {
+class _VpnPageState extends State<VpnPage> with ReloadOnSync<VpnPage> {
+  @override
+  void reloadFromVault() => _reload();
+
   List<VpnView> _profiles = [];
   String? _error;
 

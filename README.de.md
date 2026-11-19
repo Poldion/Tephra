@@ -36,15 +36,19 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 - `tephra-server` – der Sync-Server
 - Die grafische App für Windows, Linux und Android in einer ersten Fassung (Ordner `app/`): Tresor anlegen und
   entsperren, Hosts, Identitäten, Schlüssel und WireGuard-Profile verwalten, Terminalsitzungen in Reitern – direkt, über
-  Sprunghosts oder durch den Tunnel. Unter Android mit Zusatztasten (Esc, Tab, Strg, Pfeile) über der Tastatur.
+  Sprunghosts oder durch den Tunnel – und in jeder Sitzung ein Dateibrowser über SFTP. Unter Android mit einer Leiste
+  von PC-Tasten (Esc, Tab, Strg, Alt, Pfeile, Funktionstasten) über der Tastatur; offene Sitzungen bleiben verbunden,
+  während die App im Hintergrund ist. Die App gleicht mit deinem Sync-Server ab, solange der Tresor offen ist – Telefon
+  und Rechner teilen sich so einen Tresor –, und sie kann sich aus den Veröffentlichungen auf GitHub selbst
+  aktualisieren.
 
 **Noch nicht vorhanden:**
 
-- In der App fehlen noch Abgleich, MCP-Freigaben, Snippets, Portweiterleitungen, Dateiübertragung, die
-  Wiederherstellung mit dem Wiederherstellungsschlüssel und das automatische Sperren; dafür gibt es die Kommandozeile,
-  die unter Windows und Linux denselben Tresor verwendet. Unter Linux wird die App bisher nur vom automatischen
-  App-Test geprüft; an einem echten Desktop hat noch niemand damit gearbeitet. Die Android-Fassung ist bisher nur im
-  Emulator erprobt; ohne Abgleich in der App teilt sie ihren Tresor noch nicht mit anderen Geräten.
+- In der App fehlen noch MCP-Freigaben, Snippets, Portweiterleitungen, das Übertragen ganzer Ordner, das Ändern des
+  Master-Passworts, die Wiederherstellung mit dem Wiederherstellungsschlüssel und das automatische Sperren; dafür gibt
+  es die Kommandozeile, die unter Windows und Linux denselben Tresor verwendet. Unter Linux wird die App bisher nur
+  vom automatischen App-Test geprüft; an einem echten Desktop hat noch niemand damit gearbeitet. Die Android-Fassung
+  ist bisher nur im Emulator erprobt.
 - Entfernte Portweiterleitungen, Anmeldung über einen SSH-Agenten und andere VPN-Protokolle als WireGuard.
 - Proxys (SOCKS5, HTTP) und Host-Gruppen sind im Kern umgesetzt, haben aber noch keine Befehle.
 - Signierte Windows-Programme. Windows warnt beim Start des Installers vor einem unbekannten Herausgeber.
@@ -154,6 +158,9 @@ tephra sync join https://sync.example.org alice          # auf einem neuen Gerä
 
 `tephra sync now` gleicht einmal ab; `tephra daemon` gleicht im Hintergrund fortlaufend ab.
 
+Die App kann dasselbe hinter ihrem Wolkensymbol: „Konto anlegen“ auf dem ersten Gerät, „Vorhandenen Tresor abholen“
+beim ersten Start jedes weiteren. Sie gleicht ab, solange der Tresor offen ist.
+
 ### MCP
 
 ```bash
@@ -188,6 +195,7 @@ Alle Befehle mit Beispielen: [Handbuch](docs/handbuch.md).
 | `TEPHRA_PASSWORD` | – | Master-Passwort statt Eingabe (für Skripte) |
 | `TEPHRA_NEW_PASSWORD` | – | Neues Master-Passwort für `tephra init`, `tephra passwd` und `tephra recover` |
 | `TEPHRA_IDENTITY_PASSWORD` | – | Passwort, das `tephra identity add` speichert |
+| `TEPHRA_KEY_PASSPHRASE` | – | Passphrase des Schlüssels für `tephra key import` |
 | `TEPHRA_MCP_TOKEN` | – | Token des MCP-Clients für `tephra mcp serve` |
 
 Der Datenordner ist unter Windows `%APPDATA%\Tephra\data`, unter Linux `~/.local/share/tephra`.

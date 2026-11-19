@@ -66,6 +66,19 @@ String importKey({
   localOnly: localOnly,
 );
 
+/// Trägt den öffentlichen Teil eines Schlüssels auf einem Host in
+/// `~/.ssh/authorized_keys` ein. `false`: Er stand dort schon.
+///
+/// Angemeldet wird über die Verbindung, die zu dem Host schon steht; sonst
+/// ohne Rückfragen mit dessen gespeicherter Anmeldung.
+Future<bool> installKeyOnHost({
+  required String keyId,
+  required String hostId,
+}) => RustLib.instance.api.crateApiAppInstallKeyOnHost(
+  keyId: keyId,
+  hostId: hostId,
+);
+
 List<VpnView> listVpnProfiles() =>
     RustLib.instance.api.crateApiAppListVpnProfiles();
 

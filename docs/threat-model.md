@@ -203,6 +203,10 @@ The model is treated as untrusted: it may be wrong, or it may follow instruction
 
 ## Explicitly out of scope
 
+- **Whoever controls the releases on GitHub.** The app looks for updates there once a day (it can be switched off) and
+  installs one only when you confirm. The checksum it verifies comes from the same place as the file: it protects
+  against a damaged download, not against a forged release. On Android the system additionally refuses an app that is
+  not signed with the same key; the Windows programs and the AppImage are not signed.
 - **Malware on the device**, or any program running under your own account while the vault is unlocked. It can read
   memory, log the master password as you type it, read the MCP token from the client's configuration and talk to the
   daemon.

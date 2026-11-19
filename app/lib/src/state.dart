@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'platform.dart';
 import 'rust/api/app.dart';
 import 'session.dart';
 
@@ -8,6 +9,21 @@ import 'session.dart';
 class AppState extends ChangeNotifier {
   final List<TerminalSession> sessions = [];
   int _active = 0;
+  int _kept = 0;
+
+  /// Sagt dem System bei jeder Änderung, wie viele Sitzungen noch eine Verbindung halten.
+  @override
+  void notifyListeners() {
+    _keep();
+    super.notifyListeners();
+  }
+
+  void _keep() {
+    final open = sessions.where((s) => s.state != SessionState.closed).length;
+    if (open == _kept) return;
+    _kept = open;
+    keepSessions(open);
+  }
 
   TerminalSession? get active => sessions.isEmpty ? null : sessions[_active.clamp(0, sessions.length - 1)];
 
@@ -46,5 +62,6 @@ class AppState extends ChangeNotifier {
     }
     sessions.clear();
     _active = 0;
+    _keep();
   }
 }

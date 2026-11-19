@@ -21,7 +21,7 @@ use tephra_sync::Sync;
 #[command(
     name = "tephra",
     version,
-    after_help = "Umgebungsvariablen für Skripte (in der Prozessliste und im Verlauf sichtbar – nur verwenden, wo das vertretbar ist):\n  TEPHRA_PASSWORD           Master-Passwort, statt es einzutippen\n  TEPHRA_NEW_PASSWORD       neues Master-Passwort für init, passwd und recover\n  TEPHRA_IDENTITY_PASSWORD  Passwort für „tephra identity add“"
+    after_help = "Umgebungsvariablen für Skripte (in der Prozessliste und im Verlauf sichtbar – nur verwenden, wo das vertretbar ist):\n  TEPHRA_PASSWORD           Master-Passwort, statt es einzutippen\n  TEPHRA_NEW_PASSWORD       neues Master-Passwort für init, passwd und recover\n  TEPHRA_IDENTITY_PASSWORD  Passwort für „tephra identity add“\n  TEPHRA_KEY_PASSPHRASE     Passphrase für „tephra key import“"
 )]
 struct Cli {
     /// Pfad der Tresordatei. Vorgabe: der Datenordner des Benutzers
@@ -163,6 +163,12 @@ enum KeyCommand {
     List,
     /// Zeigt den öffentlichen Schlüssel zum Eintragen auf Servern.
     Show { label: String },
+    /// Trägt den öffentlichen Schlüssel auf einem Host in ~/.ssh/authorized_keys ein.
+    Install {
+        label: String,
+        /// Host, an dem sich Tephra dafür mit seiner bisherigen Anmeldung anmeldet.
+        host: String,
+    },
     /// Löscht einen Eintrag.
     Rm { label: String },
 }
@@ -666,20 +672,20 @@ async fn key(core: &Core, command: KeyCommand) -> Fallible {
         KeyCommand::Import { label, file, local_only } => {
             ensure_new::<SshKey>(core, &label)?;
             let pem = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-            let (info, passphrase) = match keys::inspect(&pem, None) {
-                Ok(info) => (info, None),
-                Err(_) => {
-                    let typed = ui::read_password("Passphrase des Schlüssels: ".into()).await.ok_or("Keine Eingabe")?;
-                    (keys::inspect(&pem, Some(&typed)).map_err(text)?, Some(typed))
+            // Abgelegt wird der Schlüssel im OpenSSH-Format und ohne Passphrase; der Tresor verschlüsselt ihn.
+            let (openssh, info) = match keys::import(&pem, None) {
+                Err(tephra_core::ssh::SshError::KeyPassphraseMissing) => {
+                    let typed = match std::env::var("TEPHRA_KEY_PASSPHRASE") {
+                        Ok(value) => value,
+                        Err(_) => {
+                            ui::read_password("Passphrase des Schlüssels: ".into()).await.ok_or("Keine Eingabe")?
+                        }
+                    };
+                    keys::import(&pem, Some(&typed)).map_err(text)?
                 }
+                other => other.map_err(text)?,
             };
-            let entry = SshKey {
-                label,
-                private_key: pem.into(),
-                passphrase: passphrase.map(Into::into),
-                public_key: info.public_key,
-                ..SshKey::default()
-            };
+            let entry = SshKey { label, private_key: openssh.into(), public_key: info.public_key, ..SshKey::default() };
             store_key(core, &entry, local_only)?;
         }
         KeyCommand::List => {
@@ -691,6 +697,19 @@ async fn key(core: &Core, command: KeyCommand) -> Fallible {
             }
         }
         KeyCommand::Show { label } => println!("{}", find::<SshKey>(core, &label)?.1.public_key),
+        KeyCommand::Install { label, host } => {
+            let (_, entry) = find::<SshKey>(core, &label)?;
+            let (id, target) = find::<Host>(core, &host)?;
+            let ui: Arc<dyn ConnectUi> = Arc::new(ui::TerminalUi);
+            let client = core.connect(id, ui).await.map_err(text)?;
+            let added = client.authorize_key(&entry.public_key).await;
+            client.disconnect().await;
+            if added.map_err(text)? {
+                println!("Schlüssel „{}“ ist auf „{}“ eingetragen.", entry.label, target.label);
+            } else {
+                println!("Schlüssel „{}“ war auf „{}“ schon eingetragen.", entry.label, target.label);
+            }
+        }
         KeyCommand::Rm { label } => remove::<SshKey>(core, &label)?,
     }
     Ok(())

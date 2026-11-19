@@ -1,6 +1,6 @@
 ; Installer for Windows (Inno Setup 6). Built by the release workflow:
 ;
-;   iscc /DAppVersion=0.2.0 /DSourceDir=<folder with the programs> /DOutputDir=<folder> packaging\windows\tephra.iss
+;   iscc /DAppVersion=0.3.0 /DSourceDir=<folder with the programs> /DOutputDir=<folder> packaging\windows\tephra.iss
 ;
 ; Installs for the current user without administrator rights: the app, the command line `tephra.exe`
 ; and the sync server `tephra-server.exe`.
@@ -68,8 +68,15 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 
 [Run]
 Filename: "{app}\tephra-app.exe"; Description: "{cm:LaunchProgram,Tephra}"; Flags: nowait postinstall skipifsilent
+; When the app updates itself it runs the installer silently with /RELAUNCH=1 and wants to be started again.
+Filename: "{app}\tephra-app.exe"; Flags: nowait skipifnotsilent; Check: Relaunch
 
 [Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
 // True if the folder is not yet part of the PATH of the user.
 function NeedsAddPath(Dir: string): Boolean;
 var

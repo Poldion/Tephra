@@ -15,7 +15,7 @@ use std::time::Duration;
 use tephra_core::model::{AuthMethod, Host, Identity, SshKey, VpnProfile};
 use tephra_core::ssh::keys;
 use tephra_core::transport::wireguard;
-use tephra_core::{Core, KdfParams};
+use tephra_core::{Core, KdfParams, NonInteractive};
 
 #[frb(init)]
 pub fn init_app() {
@@ -99,6 +99,13 @@ pub async fn lock_vault() -> Result<()> {
         for (_, task) in app.tasks.drain() {
             task.abort();
         }
+        for (_, task) in app.transfers.drain() {
+            task.abort();
+        }
+        if let Some(task) = app.sync.take() {
+            task.abort();
+        }
+        app.files.clear();
         app.core.clone()
     };
     if let Some(core) = core {
@@ -333,17 +340,33 @@ pub fn import_key(label: String, pem: String, passphrase: Option<String>, local_
     if label.trim().is_empty() {
         bail!("Die Bezeichnung darf nicht leer sein.");
     }
-    let passphrase = passphrase.filter(|p| !p.is_empty());
-    let info = keys::inspect(&pem, passphrase.as_deref())
-        .map_err(|_| anyhow!("Der Schlüssel ist ungültig oder die Passphrase stimmt nicht."))?;
+    // Abgelegt wird der Schlüssel im OpenSSH-Format und ohne Passphrase; der Tresor verschlüsselt ihn.
+    let (openssh, info) = keys::import(&pem, passphrase.as_deref())?;
     let key = SshKey {
         label: label.trim().to_string(),
-        private_key: pem.into(),
-        passphrase: passphrase.map(Into::into),
+        private_key: openssh.into(),
         public_key: info.public_key,
         ..SshKey::default()
     };
     store_key(&key, local_only)
+}
+
+/// Trägt den öffentlichen Teil eines Schlüssels auf einem Host in
+/// `~/.ssh/authorized_keys` ein. `false`: Er stand dort schon.
+///
+/// Angemeldet wird über die Verbindung, die zu dem Host schon steht; sonst
+/// ohne Rückfragen mit dessen gespeicherter Anmeldung.
+pub async fn install_key_on_host(key_id: String, host_id: String) -> Result<bool> {
+    let (key_id, host_id) = (parse_id(&key_id)?, parse_id(&host_id)?);
+    let core = core()?;
+    RUNTIME
+        .spawn(async move {
+            let key =
+                core.with_vault(|v| v.get::<SshKey>(key_id))?.ok_or_else(|| anyhow!("Schlüssel nicht gefunden"))?;
+            let client = core.connect_pooled(host_id, std::sync::Arc::new(NonInteractive)).await?;
+            Ok(client.authorize_key(&key.public_key).await?)
+        })
+        .await?
 }
 
 // ------------------------------------------------------------------ VPN-Profile

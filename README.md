@@ -33,15 +33,17 @@ The project is under active development. **What exists today:**
 - `tephra-server` – the sync server
 - A first version of the graphical app for Windows, Linux and Android (folder `app/`): create and unlock the vault,
   manage hosts, identities, keys and WireGuard profiles, terminal sessions in tabs – direct, through jump hosts or
-  through the tunnel. On Android with extra keys (Esc, Tab, Ctrl, arrows) above the keyboard.
+  through the tunnel – and a file browser over SFTP in every session. On Android with a bar of PC keys (Esc, Tab,
+  Ctrl, Alt, arrows, function keys) above the keyboard; open sessions stay connected while the app is in the
+  background. The app syncs with your sync server while the vault is open, so the phone and the desktop share one
+  vault, and it can update itself from the releases on GitHub.
 
 **Not there yet:**
 
-- The app still lacks sync, MCP permissions, snippets, port forwarding, file transfer, recovery with the recovery key
-  and automatic locking; the command line covers these and, on Windows and Linux, uses the same vault. On Linux the
-  app is exercised by the automated app test only; nobody has worked with it on a real desktop yet. The Android
-  version has only been tried in the emulator so far, and without sync in the app it does not share its vault with
-  other devices.
+- The app still lacks MCP permissions, snippets, port forwarding, transferring whole folders, changing the master
+  password, recovery with the recovery key and automatic locking; the command line covers these and, on Windows and
+  Linux, uses the same vault. On Linux the app is exercised by the automated app test only; nobody has worked with it
+  on a real desktop yet. The Android version has only been tried in the emulator so far.
 - Remote port forwarding, login through an SSH agent and VPN protocols other than WireGuard.
 - Proxies (SOCKS5, HTTP) and host groups are implemented in the core but have no commands yet.
 - Signed Windows programs. Windows will warn about an unknown publisher when the installer starts.
@@ -150,6 +152,9 @@ tephra sync join https://sync.example.org alice          # on a new device: fetc
 
 `tephra sync now` syncs once; `tephra daemon` keeps syncing in the background.
 
+The app does the same behind its cloud symbol: "Create account" on the first device, "Fetch an existing vault" on the
+first start of every further one. It keeps syncing for as long as the vault is open.
+
 ### MCP
 
 ```bash
@@ -184,6 +189,7 @@ All commands with examples: [manual](docs/manual.md).
 | `TEPHRA_PASSWORD` | – | Master password, instead of typing it (for scripts) |
 | `TEPHRA_NEW_PASSWORD` | – | New master password for `tephra init`, `tephra passwd` and `tephra recover` |
 | `TEPHRA_IDENTITY_PASSWORD` | – | Password to store with `tephra identity add` |
+| `TEPHRA_KEY_PASSPHRASE` | – | Passphrase of the key for `tephra key import` |
 | `TEPHRA_MCP_TOKEN` | – | Token of the MCP client for `tephra mcp serve` |
 
 The data folder is `%APPDATA%\Tephra\data` on Windows and `~/.local/share/tephra` on Linux.

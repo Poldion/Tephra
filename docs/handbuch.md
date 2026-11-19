@@ -95,11 +95,19 @@ tephra key generate laptop                       # neues Ed25519-Schlüsselpaar,
 tephra key import alt ~/.ssh/id_ed25519          # vorhandener privater Schlüssel; fragt nach der Passphrase, falls er eine hat
 tephra key list
 tephra key show laptop                           # öffentlicher Schlüssel für authorized_keys auf dem Server
+tephra key install laptop web                    # trägt den öffentlichen Schlüssel auf dem Host „web“ in ~/.ssh/authorized_keys ein
 tephra key rm alt
 ```
 
-Eingelesene Schlüssel dürfen im OpenSSH-, PKCS#8- oder PEM-Format vorliegen. Eine Passphrase wird zusammen mit dem
-Schlüssel im Tresor gespeichert, du wirst also nicht erneut gefragt.
+Eingelesene Schlüssel dürfen im OpenSSH-, PKCS#8- oder PuTTY-Format vorliegen oder im alten PEM-Format von OpenSSL
+(`RSA PRIVATE KEY`, `EC PRIVATE KEY`), auch wenn dieses mit einer Passphrase per AES oder Triple DES geschützt ist.
+`tephra` fragt einmal nach der Passphrase und legt den Schlüssel im OpenSSH-Format ohne sie ab – der Tresor
+verschlüsselt ihn –, du wirst also nicht erneut gefragt. Schlägt das Einlesen fehl, sagt die Meldung, ob die Passphrase
+fehlt oder nicht stimmt oder welches Format nicht unterstützt wird.
+
+`tephra key install` meldet sich mit der bisherigen Identität am Host an und hängt den öffentlichen Schlüssel dort an
+`~/.ssh/authorized_keys` des Benutzers an; vorhandene Einträge bleiben unberührt, und ein Schlüssel, der schon dort
+steht, wird nicht doppelt eingetragen. Danach kannst du dem Host eine Identität mit diesem Schlüssel zuweisen.
 
 `--local-only` bei `generate` oder `import` behält einen Schlüssel auf diesem Gerät: Er geht nie an den Sync-Server
 und erreicht deine anderen Geräte nicht.
@@ -175,8 +183,8 @@ Für jeden `Host`-Eintrag ohne Platzhalter legt `tephra` einen Host mit passende
 - Blöcke mit Platzhaltern (`Host *`, `Host *.example.org`) liefern wie bei OpenSSH Voreinstellungen für die Einträge,
   auf die sie passen, erzeugen aber selbst keine Hosts. `Match`-Blöcke und `Include` werden nicht ausgewertet; alle
   übrigen Einstellungen werden ignoriert.
-- Ein Schlüssel mit Passphrase wird nicht übernommen. `tephra` meldet das; lies ihn mit `tephra key import` ein und lege
-  die Identität selbst an. Bis dahin fragt die Identität eines solchen Hosts nach einem Passwort.
+- Ein Schlüssel mit Passphrase wird hier nicht übernommen. `tephra` meldet das; lies ihn mit `tephra key import` ein und
+  lege die Identität selbst an. Bis dahin fragt die Identität eines solchen Hosts nach einem Passwort.
 - Übernommene Schlüssel sind gewöhnliche Schlüssel im Tresor und werden abgeglichen. Die Dateien in `~/.ssh` bleiben
   unberührt.
 - Hosts, deren Bezeichnung es schon gibt, bleiben unverändert und werden aufgelistet. Die Übernahme zweimal
@@ -329,6 +337,16 @@ fragt nach dem Master-Passwort des Kontos, legt den Tresor an und holt alles ab.
 
 `tephra sync now` gleicht einmal ab. Für fortlaufenden Abgleich lässt du `tephra daemon` laufen: Er lädt lokale
 Änderungen binnen Sekunden hoch und erfährt vom Server, wenn ein anderes Gerät etwas ändert.
+
+**In der App.** Das Wolkensymbol öffnet dasselbe. Auf dem ersten Gerät trägst du Serveradresse, Benutzername,
+Einladungscode und das Master-Passwort des Tresors ein und wählst „Konto anlegen“. Ein weiteres Gerät darf noch keinen
+Tresor haben: Wähle dort beim ersten Start „Vorhandenen Tresor abholen“ und melde dich mit Serveradresse, Benutzername
+und Master-Passwort an. Solange der Tresor offen ist, gleicht die App fortlaufend ab wie `tephra daemon`; ihr Dialog
+zeigt die Geräte des Kontos, entfernt eines, meldet dieses Gerät neu an und trennt es. Ein Telefon, das schon einen
+eigenen Tresor hat, kann keinem Konto beitreten – lösche zuerst die Daten der App (oder installiere sie neu) und hole
+den Tresor dann ab. Unter Android vertraut die App den Zertifikaten des Systems und denen, die du selbst installiert
+hast; ein Server hinter einer eigenen Zertifizierungsstelle funktioniert also, sobald deren Wurzelzertifikat auf dem
+Telefon installiert ist.
 
 Gut zu wissen:
 
@@ -669,6 +687,7 @@ ergänzt du `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
 | `TEPHRA_PASSWORD` | allen Befehlen, die entsperren | Master-Passwort statt Abfrage |
 | `TEPHRA_NEW_PASSWORD` | `tephra init`, `tephra passwd`, `tephra recover` | Neues Master-Passwort statt Abfrage |
 | `TEPHRA_IDENTITY_PASSWORD` | `tephra identity add` | Zu speicherndes Passwort statt Abfrage |
+| `TEPHRA_KEY_PASSPHRASE` | `tephra key import` | Passphrase des Schlüssels statt Abfrage |
 | `TEPHRA_MCP_TOKEN` | `tephra mcp serve` | Token des MCP-Clients |
 
 ```bash

@@ -5,6 +5,7 @@ import 'src/rust/api/app.dart';
 import 'src/rust/frb_generated.dart';
 import 'src/settings.dart';
 import 'src/state.dart';
+import 'src/sync.dart';
 import 'src/text.dart';
 import 'src/ui/gate.dart';
 import 'src/ui/home.dart';
@@ -65,8 +66,20 @@ class _RootState extends State<Root> {
   final _state = AppState();
   late bool _unlocked = isUnlocked();
 
+  @override
+  void initState() {
+    super.initState();
+    if (_unlocked) syncState.start();
+  }
+
+  void _onUnlocked() {
+    syncState.start();
+    setState(() => _unlocked = true);
+  }
+
   Future<void> _lock() async {
     _state.closeAll();
+    syncState.stop();
     try {
       await lockVault();
     } finally {
@@ -84,7 +97,7 @@ class _RootState extends State<Root> {
   @override
   Widget build(BuildContext context) {
     if (!_unlocked) {
-      return GateScreen(onUnlocked: () => setState(() => _unlocked = true));
+      return GateScreen(onUnlocked: _onUnlocked);
     }
     return HomeScreen(state: _state, onLock: _lock);
   }

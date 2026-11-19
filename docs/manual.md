@@ -92,11 +92,18 @@ tephra key generate laptop                       # new Ed25519 key pair, prints 
 tephra key import old ~/.ssh/id_ed25519          # existing private key; asks for its passphrase if it has one
 tephra key list
 tephra key show laptop                           # public key for authorized_keys on the server
+tephra key install laptop web                    # adds the public key to ~/.ssh/authorized_keys on the host "web"
 tephra key rm old
 ```
 
-Imported keys may be in OpenSSH, PKCS#8 or PEM format. A passphrase is stored in the vault together with the key, so
-you are not asked again.
+Imported keys may be in OpenSSH, PKCS#8 or PuTTY format or in the old PEM format of OpenSSL (`RSA PRIVATE KEY`,
+`EC PRIVATE KEY`), also when that one is protected by a passphrase with AES or Triple DES. `tephra` asks for the
+passphrase once and stores the key in OpenSSH format without it – the vault encrypts it – so you are not asked again.
+If the import fails, the message says whether the passphrase is missing or wrong or which format is not supported.
+
+`tephra key install` signs in to the host with its current identity and appends the public key to
+`~/.ssh/authorized_keys` of that user; entries that are already there stay untouched, and a key that is already listed
+is not added twice. Afterwards you can give the host an identity that uses the key.
 
 `--local-only` on `generate` or `import` keeps a key on this device: it is never sent to the sync server and never
 reaches your other devices.
@@ -171,8 +178,8 @@ For every `Host` entry without wildcards, `tephra` creates a host with a matchin
 
 - Blocks with wildcards (`Host *`, `Host *.example.org`) supply defaults for the entries they match, as in OpenSSH, but
   do not create hosts themselves. `Match` blocks and `Include` are not evaluated; all other settings are ignored.
-- A key protected by a passphrase is not imported. `tephra` says so; read it in with `tephra key import` and create the
-  identity yourself. Until then the identity of such a host asks for a password.
+- A key protected by a passphrase is not imported here. `tephra` says so; read it in with `tephra key import` and
+  create the identity yourself. Until then the identity of such a host asks for a password.
 - Imported keys are ordinary keys in the vault and are synced. The files in `~/.ssh` stay untouched.
 - Hosts whose label already exists are left alone and listed. Running the import twice does no harm.
 
@@ -319,6 +326,15 @@ asks for the master password of the account, creates the vault and fetches every
 
 `tephra sync now` syncs once. For continuous sync leave `tephra daemon` running: it uploads local changes within seconds
 and is notified by the server when another device changes something.
+
+**In the app.** The cloud symbol opens the same thing. On the first device enter the server address, a user name, the
+invite code and the master password of the vault and choose "Create account". A further device must not have a vault
+yet: on its first start choose "Fetch an existing vault" and sign in with the server address, the user name and the
+master password. While the vault is open the app syncs continuously, like `tephra daemon`; its dialog lists the
+devices of the account, removes one, signs this device in again and disconnects it. A phone that already has a vault
+of its own cannot join an account – remove the app's data first (or reinstall it) and fetch the vault then. On
+Android the app trusts the certificates of the system and those you installed yourself, so a server behind your own
+certificate authority works once its root certificate is installed on the phone.
 
 Good to know:
 
@@ -649,6 +665,7 @@ target. The unit sets `TEPHRA_SERVER_BEHIND_PROXY`; your proxy must set `X-Forwa
 | `TEPHRA_PASSWORD` | all commands that unlock | Master password instead of the prompt |
 | `TEPHRA_NEW_PASSWORD` | `tephra init`, `tephra passwd`, `tephra recover` | New master password instead of the prompt |
 | `TEPHRA_IDENTITY_PASSWORD` | `tephra identity add` | Password to store instead of the prompt |
+| `TEPHRA_KEY_PASSPHRASE` | `tephra key import` | Passphrase of the key instead of the prompt |
 | `TEPHRA_MCP_TOKEN` | `tephra mcp serve` | Token of the MCP client |
 
 ```bash

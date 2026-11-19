@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../rust/api/app.dart';
 import '../text.dart';
 import 'common.dart';
+import 'sync_ui.dart';
 
 /// Liste der Hosts mit Suche; ein Klick verbindet.
 class HostsPage extends StatefulWidget {
@@ -14,7 +15,10 @@ class HostsPage extends StatefulWidget {
   State<HostsPage> createState() => _HostsPageState();
 }
 
-class _HostsPageState extends State<HostsPage> {
+class _HostsPageState extends State<HostsPage> with ReloadOnSync<HostsPage> {
+  @override
+  void reloadFromVault() => _reload();
+
   List<HostView> _hosts = [];
   Map<String, String> _vpnNames = {};
   String _filter = '';

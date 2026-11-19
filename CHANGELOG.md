@@ -4,6 +4,46 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] – 2026-11-19
+
+### Added
+
+- **Sync in the app:** the cloud symbol sets it up. On the first device the app creates the account on your sync
+  server and uploads the vault; a further device chooses "Fetch an existing vault" on its first start, signs in with
+  the master password and gets everything. While the vault is open the app keeps syncing: changes made here are
+  uploaded within seconds, changes from other devices appear in the lists by themselves. The dialog shows the devices
+  of the account, removes one, signs in again after the password was changed elsewhere, and disconnects. On Android
+  the connection to the server trusts the certificates of the system and those you installed yourself.
+- **File browser in the app (SFTP):** every session can switch between terminal and files. On the desktop this device
+  is on the left and the host on the right; on the phone the system's own dialogs pick and save files. Create folders,
+  rename, delete (folders with everything in them), upload and download single files with progress and cancelling. It
+  uses the connection of the session, also through jump hosts and tunnels.
+- **More keys on Android:** Alt, the function keys behind "Fn", further symbols, Del and Ins. Ctrl and Alt apply to
+  the next key, a second tap locks them, a third releases them; they also combine with the keys of the bar. Arrows,
+  paging and Del repeat while held.
+- **The app updates itself:** once a day it asks GitHub whether there is a newer release (can be switched off under
+  "About") and offers to install it – on Windows through the installer, on Android by handing the signed app to the
+  system, as an AppImage by replacing its file. The zip and the Debian package only get a hint with a link. Every
+  download is checked against the published SHA-256 checksum.
+- **Install a key on a host:** "Install on a host" in the key list of the app and `tephra key install <key> <host>`
+  add the public key to `~/.ssh/authorized_keys` of the user on that host. It is appended over SFTP; existing entries
+  are never rewritten.
+- **Key import:** keys in the old PEM format of OpenSSL that are protected by a passphrase (`RSA PRIVATE KEY` and
+  `EC PRIVATE KEY` with AES-128, AES-192, AES-256 or Triple DES) can now be read. `TEPHRA_KEY_PASSPHRASE` supplies the
+  passphrase to `tephra key import` in scripts.
+- **Sessions stay connected in the background on Android:** while sessions are open, a service with a notification
+  keeps the app in the foreground. Without it Android freezes an app a few seconds after you leave it – even for the
+  system's own file dialog – and closes its connections. The first session asks for the permission to show the
+  notification; the service works without it too.
+
+### Changed
+
+- **Terminal:** when the connection drops, the terminal says so instead of ending without a word.
+
+- **Key import:** the error now says whether the passphrase is missing, whether it is wrong, or which format or
+  cipher is not supported; a public key pasted by mistake is recognised. Imported keys are stored in OpenSSH format
+  and without their passphrase – the vault encrypts them – so a later connection never fails on the original format.
+
 ## [0.2.0] – 2026-11-19
 
 ### Added

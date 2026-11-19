@@ -31,8 +31,14 @@ pub enum SshError {
     AuthFailed { user: String, methods: Vec<String> },
     #[error("Keine Anmeldedaten für {0} vorhanden")]
     NoCredentials(String),
-    #[error("Schlüssel ist ungültig oder die Passphrase stimmt nicht: {0}")]
+    #[error("Der Schlüssel lässt sich nicht lesen: {0}")]
     Key(String),
+    #[error("Der Schlüssel ist mit einer Passphrase geschützt; sie fehlt.")]
+    KeyPassphraseMissing,
+    #[error("Die Passphrase des Schlüssels stimmt nicht.")]
+    KeyPassphraseWrong,
+    #[error("Dieses Schlüsselformat wird nicht unterstützt: {0}")]
+    KeyFormatUnsupported(String),
     #[error("Zeitüberschreitung: {0}")]
     Timeout(String),
     #[error("Verbindung wurde getrennt")]

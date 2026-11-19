@@ -300,7 +300,8 @@ impl server::Handler for Handler {
 // ------------------------------------------------------------------ SFTP
 
 /// SFTP auf dem Dateisystem im Arbeitsspeicher. Verzeichnisse ergeben sich
-/// aus den Pfaden der Dateien.
+/// aus den Pfaden der Dateien; ein leeres Verzeichnis steht als Eintrag mit
+/// abschließendem Schrägstrich in der Tabelle.
 struct Sftp {
     files: Files,
     /// Verzeichnisse, deren Inhalt bereits vollständig geliefert wurde.
@@ -428,12 +429,66 @@ impl russh_sftp::server::Handler for Sftp {
         let mut entries: BTreeMap<String, FileAttributes> = BTreeMap::new();
         for (path, content) in self.lock().iter() {
             let Some(rest) = path.strip_prefix(&prefix) else { continue };
+            if rest.is_empty() {
+                continue; // der Eintrag des Verzeichnisses selbst
+            }
             match rest.split_once('/') {
                 Some((dir, _)) => entries.insert(dir.to_string(), dir_attrs()),
                 None => entries.insert(rest.to_string(), file_attrs(content.len())),
             };
         }
         Ok(Name { id, files: entries.into_iter().map(|(name, attrs)| File::new(name, attrs)).collect() })
+    }
+
+    async fn mkdir(&mut self, id: u32, path: String, _attrs: FileAttributes) -> Result<Status, Self::Error> {
+        if self.attrs_of(&path).is_ok() {
+            return Err(StatusCode::Failure);
+        }
+        self.lock().insert(dir_prefix(&path), Vec::new());
+        Ok(done(id))
+    }
+
+    async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
+        if !self.attrs_of(&path)?.is_dir() {
+            return Err(StatusCode::NoSuchFile);
+        }
+        let prefix = dir_prefix(&path);
+        let mut files = self.lock();
+        if files.keys().any(|name| name.starts_with(&prefix) && *name != prefix) {
+            return Err(StatusCode::Failure); // nicht leer
+        }
+        files.remove(&prefix);
+        Ok(done(id))
+    }
+
+    async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
+        if filename.ends_with('/') {
+            return Err(StatusCode::NoSuchFile);
+        }
+        self.lock().remove(&filename).map(|_| done(id)).ok_or(StatusCode::NoSuchFile)
+    }
+
+    async fn rename(&mut self, id: u32, oldpath: String, newpath: String) -> Result<Status, Self::Error> {
+        if self.attrs_of(&newpath).is_ok() {
+            return Err(StatusCode::Failure);
+        }
+        let is_dir = self.attrs_of(&oldpath)?.is_dir();
+        let mut files = self.lock();
+        if !is_dir {
+            let content = files.remove(&oldpath).ok_or(StatusCode::NoSuchFile)?;
+            files.insert(newpath, content);
+            return Ok(done(id));
+        }
+        let (from, to) = (dir_prefix(&oldpath), dir_prefix(&newpath));
+        let moved: Vec<String> = files.keys().filter(|name| name.starts_with(&from)).cloned().collect();
+        for name in moved {
+            if let Some(content) = files.remove(&name) {
+                files.insert(format!("{to}{}", &name[from.len()..]), content);
+            }
+        }
+        // Auch ein Verzeichnis, das nur aus seinen Dateien bestand, bleibt nach dem Umbenennen bestehen.
+        files.entry(to).or_default();
+        Ok(done(id))
     }
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {

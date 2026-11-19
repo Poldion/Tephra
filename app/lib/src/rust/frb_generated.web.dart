@@ -7,6 +7,8 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api/app.dart';
+import 'api/files.dart';
+import 'api/sync.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -32,6 +34,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SyncEvent> dco_decode_StreamSink_sync_event_Sse(dynamic raw);
+
+  @protected
+  RustStreamSink<TransferEvent> dco_decode_StreamSink_transfer_event_Sse(
+    dynamic raw,
+  );
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -41,16 +51,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HostInput dco_decode_box_autoadd_host_input(dynamic raw);
 
   @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+
+  @protected
   IdentityInput dco_decode_box_autoadd_identity_input(dynamic raw);
 
   @protected
+  SyncConnection dco_decode_box_autoadd_sync_connection(dynamic raw);
+
+  @protected
+  SyncSummary dco_decode_box_autoadd_sync_summary(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  FileEntry dco_decode_file_entry(dynamic raw);
 
   @protected
   HostInput dco_decode_host_input(dynamic raw);
 
   @protected
   HostView dco_decode_host_view(dynamic raw);
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
   IdentityInput dco_decode_identity_input(dynamic raw);
@@ -65,6 +93,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  List<FileEntry> dco_decode_list_file_entry(dynamic raw);
+
+  @protected
   List<HostView> dco_decode_list_host_view(dynamic raw);
 
   @protected
@@ -72,6 +103,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<KeyView> dco_decode_list_key_view(dynamic raw);
+
+  @protected
+  List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -83,13 +117,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PromptView> dco_decode_list_prompt_view(dynamic raw);
 
   @protected
+  List<SyncDevice> dco_decode_list_sync_device(dynamic raw);
+
+  @protected
   List<VpnView> dco_decode_list_vpn_view(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  SyncConnection? dco_decode_opt_box_autoadd_sync_connection(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
   @protected
   List<String>? dco_decode_opt_list_String(dynamic raw);
@@ -101,10 +147,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionEvent dco_decode_session_event(dynamic raw);
 
   @protected
+  SyncConnection dco_decode_sync_connection(dynamic raw);
+
+  @protected
+  SyncDevice dco_decode_sync_device(dynamic raw);
+
+  @protected
+  SyncEvent dco_decode_sync_event(dynamic raw);
+
+  @protected
+  SyncSummary dco_decode_sync_summary(dynamic raw);
+
+  @protected
+  TransferEvent dco_decode_transfer_event(dynamic raw);
+
+  @protected
   int dco_decode_u_16(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -124,6 +188,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RustStreamSink<SyncEvent> sse_decode_StreamSink_sync_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<TransferEvent> sse_decode_StreamSink_transfer_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
@@ -133,18 +207,38 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   HostInput sse_decode_box_autoadd_host_input(SseDeserializer deserializer);
 
   @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
   IdentityInput sse_decode_box_autoadd_identity_input(
     SseDeserializer deserializer,
   );
 
   @protected
+  SyncConnection sse_decode_box_autoadd_sync_connection(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  SyncSummary sse_decode_box_autoadd_sync_summary(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  FileEntry sse_decode_file_entry(SseDeserializer deserializer);
 
   @protected
   HostInput sse_decode_host_input(SseDeserializer deserializer);
 
   @protected
   HostView sse_decode_host_view(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
   IdentityInput sse_decode_identity_input(SseDeserializer deserializer);
@@ -159,6 +253,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  List<FileEntry> sse_decode_list_file_entry(SseDeserializer deserializer);
+
+  @protected
   List<HostView> sse_decode_list_host_view(SseDeserializer deserializer);
 
   @protected
@@ -170,6 +267,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<KeyView> sse_decode_list_key_view(SseDeserializer deserializer);
 
   @protected
+  List<Uint8List> sse_decode_list_list_prim_u_8_strict(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -179,13 +281,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PromptView> sse_decode_list_prompt_view(SseDeserializer deserializer);
 
   @protected
+  List<SyncDevice> sse_decode_list_sync_device(SseDeserializer deserializer);
+
+  @protected
   List<VpnView> sse_decode_list_vpn_view(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  SyncConnection? sse_decode_opt_box_autoadd_sync_connection(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   List<String>? sse_decode_opt_list_String(SseDeserializer deserializer);
@@ -197,10 +313,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SessionEvent sse_decode_session_event(SseDeserializer deserializer);
 
   @protected
+  SyncConnection sse_decode_sync_connection(SseDeserializer deserializer);
+
+  @protected
+  SyncDevice sse_decode_sync_device(SseDeserializer deserializer);
+
+  @protected
+  SyncEvent sse_decode_sync_event(SseDeserializer deserializer);
+
+  @protected
+  SyncSummary sse_decode_sync_summary(SseDeserializer deserializer);
+
+  @protected
+  TransferEvent sse_decode_transfer_event(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_16(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -227,6 +361,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_StreamSink_sync_event_Sse(
+    RustStreamSink<SyncEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_transfer_event_Sse(
+    RustStreamSink<TransferEvent> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
@@ -239,8 +385,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_identity_input(
     IdentityInput self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_sync_connection(
+    SyncConnection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_sync_summary(
+    SyncSummary self,
     SseSerializer serializer,
   );
 
@@ -248,10 +412,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_file_entry(FileEntry self, SseSerializer serializer);
+
+  @protected
   void sse_encode_host_input(HostInput self, SseSerializer serializer);
 
   @protected
   void sse_encode_host_view(HostView self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
   void sse_encode_identity_input(IdentityInput self, SseSerializer serializer);
@@ -266,6 +439,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_file_entry(
+    List<FileEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_host_view(List<HostView> self, SseSerializer serializer);
 
   @protected
@@ -276,6 +455,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_key_view(List<KeyView> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_list_prim_u_8_strict(
+    List<Uint8List> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -293,13 +478,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_sync_device(
+    List<SyncDevice> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_vpn_view(List<VpnView> self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_sync_connection(
+    SyncConnection? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_list_String(List<String>? self, SseSerializer serializer);
@@ -311,10 +517,31 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_session_event(SessionEvent self, SseSerializer serializer);
 
   @protected
+  void sse_encode_sync_connection(
+    SyncConnection self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_device(SyncDevice self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_event(SyncEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_summary(SyncSummary self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transfer_event(TransferEvent self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

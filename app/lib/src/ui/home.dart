@@ -3,12 +3,15 @@ import 'package:material_ui/material_ui.dart';
 import '../rust/api/app.dart';
 import '../settings.dart';
 import '../state.dart';
+import '../update.dart';
 import '../text.dart';
 import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
 import 'logo.dart';
+import 'sync_ui.dart';
 import 'terminal_page.dart';
+import 'update_ui.dart';
 import 'vpn_page.dart';
 
 /// Die App nach dem Entsperren: Navigation und die einzelnen Bereiche.
@@ -41,6 +44,43 @@ class _HomeScreenState extends State<HomeScreen> {
     _Section(Icons.key_outlined, Icons.key_rounded, t('Schlüssel', 'Keys')),
     _Section(Icons.vpn_lock_outlined, Icons.vpn_lock_rounded, 'VPN'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    availableUpdate.addListener(_announceUpdate);
+    checkForUpdateQuietly();
+  }
+
+  @override
+  void dispose() {
+    availableUpdate.removeListener(_announceUpdate);
+    super.dispose();
+  }
+
+  /// Weist einmal auf eine neu gefundene Fassung hin; danach erinnert der Punkt am Info-Symbol.
+  void _announceUpdate() {
+    final update = availableUpdate.value;
+    if (update == null || !mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(t('Tephra ${update.version} ist verfügbar.', 'Tephra ${update.version} is available.')),
+        behavior: SnackBarBehavior.floating,
+        width: 520,
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(label: t('Anzeigen', 'Show'), onPressed: () => showUpdateDialog(context, update)),
+      ),
+    );
+  }
+
+  Widget _aboutButton() {
+    return IconButton(
+      tooltip: t('Über $appName', 'About $appName'),
+      icon: Badge(isLabelVisible: availableUpdate.value != null, child: const Icon(Icons.info_outline_rounded)),
+      onPressed: _about,
+    );
+  }
 
   void _connect(HostView host) {
     widget.state.open(host);
@@ -80,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
             'SSH credentials, WireGuard tunnels and a terminal in one app. All data is stored encrypted in your vault.',
           ),
         ),
+        const UpdateSection(),
       ],
     );
   }
@@ -146,12 +187,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        const SyncButton(),
                         _themeButton(),
-                        IconButton(
-                          tooltip: t('Über $appName', 'About $appName'),
-                          icon: const Icon(Icons.info_outline_rounded),
-                          onPressed: _about,
-                        ),
+                        _aboutButton(),
                         IconButton(
                           tooltip: t('Tresor sperren', 'Lock vault'),
                           icon: const Icon(Icons.lock_outline_rounded),
@@ -183,12 +221,9 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text(appName),
         actions: [
+          const SyncButton(),
           _themeButton(),
-          IconButton(
-            tooltip: t('Über $appName', 'About $appName'),
-            icon: const Icon(Icons.info_outline_rounded),
-            onPressed: _about,
-          ),
+          _aboutButton(),
           IconButton(
             tooltip: t('Tresor sperren', 'Lock vault'),
             icon: const Icon(Icons.lock_outline_rounded),

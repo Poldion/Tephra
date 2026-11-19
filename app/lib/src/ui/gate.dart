@@ -3,11 +3,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../paths.dart';
 import '../rust/api/app.dart';
+import '../sync.dart';
 import '../text.dart';
 import 'common.dart';
 import 'logo.dart';
 
-/// Anmeldung: Tresor anlegen oder entsperren.
+/// Anmeldung: Tresor anlegen, von einem Sync-Server abholen oder entsperren.
 class GateScreen extends StatefulWidget {
   const GateScreen({super.key, required this.onUnlocked});
 
@@ -22,6 +23,11 @@ class _GateScreenState extends State<GateScreen> {
   late bool _exists = vaultExists(path: _path);
   final _password = TextEditingController();
   final _repeat = TextEditingController();
+  final _server = TextEditingController();
+  final _username = TextEditingController();
+
+  /// Statt einen neuen Tresor anzulegen: den eines bestehenden Kontos vom Sync-Server abholen.
+  bool _joining = false;
   bool _busy = false;
   String? _error;
 
@@ -33,7 +39,51 @@ class _GateScreenState extends State<GateScreen> {
   void dispose() {
     _password.dispose();
     _repeat.dispose();
+    _server.dispose();
+    _username.dispose();
     super.dispose();
+  }
+
+  void _setJoining(bool value) {
+    setState(() {
+      _joining = value;
+      _error = null;
+      _password.clear();
+      _repeat.clear();
+    });
+  }
+
+  Future<void> _join() async {
+    if (_busy) return;
+    if (_server.text.trim().isEmpty || _username.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(
+        () => _error = t(
+          'Serveradresse, Benutzername und Master-Passwort werden gebraucht.',
+          'Server address, username and master password are required.',
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await syncState.join(server: _server.text, username: _username.text, password: _password.text);
+      _password.clear();
+      widget.onUnlocked();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = errorText(error);
+          // Scheitert erst das Abholen der Daten, gibt es den Tresor schon: Er lässt sich entsperren.
+          _exists = vaultExists(path: _path);
+          if (_exists) _joining = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -95,7 +145,12 @@ class _GateScreenState extends State<GateScreen> {
                 const SizedBox(height: 12),
                 Text(appName, style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
                 const SizedBox(height: 28),
-                if (_recoveryKey != null) ..._recovery(theme) else ..._form(theme),
+                if (_recoveryKey != null)
+                  ..._recovery(theme)
+                else if (_joining)
+                  ..._joinForm(theme)
+                else
+                  ..._form(theme),
               ],
             ),
           ),
@@ -152,11 +207,82 @@ class _GateScreenState extends State<GateScreen> {
               : Text(_exists ? t('Entsperren', 'Unlock') : t('Tresor anlegen', 'Create vault')),
         ),
       ),
+      if (!_exists) ...[
+        const SizedBox(height: 8),
+        TextButton(
+          key: const Key('gate-join'),
+          onPressed: _busy ? null : () => _setJoining(true),
+          child: Text(t('Vorhandenen Tresor abholen', 'Fetch an existing vault')),
+        ),
+      ],
       const SizedBox(height: 16),
       Text(
         _path,
         style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
         textAlign: TextAlign.center,
+      ),
+    ];
+  }
+
+  List<Widget> _joinForm(ThemeData theme) {
+    return [
+      Text(t('Vorhandenen Tresor abholen', 'Fetch an existing vault'), style: theme.textTheme.titleLarge),
+      const SizedBox(height: 6),
+      Text(
+        t(
+          'Du gleichst deinen Tresor schon auf einem anderen Gerät mit einem Sync-Server ab? Melde dieses Gerät an demselben Konto an; es holt dann alles ab.',
+          'You already sync your vault with a sync server on another device? Sign this device in to the same account and it fetches everything.',
+        ),
+        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 20),
+      TextField(
+        key: const Key('join-server'),
+        controller: _server,
+        enabled: !_busy,
+        autofocus: true,
+        autocorrect: false,
+        keyboardType: TextInputType.url,
+        decoration: InputDecoration(
+          labelText: t('Serveradresse', 'Server address'),
+          hintText: 'https://sync.example.org',
+        ),
+      ),
+      const SizedBox(height: 14),
+      TextField(
+        key: const Key('join-username'),
+        controller: _username,
+        enabled: !_busy,
+        autocorrect: false,
+        decoration: InputDecoration(labelText: t('Benutzername', 'Username')),
+      ),
+      const SizedBox(height: 14),
+      SecretField(
+        key: const Key('join-password'),
+        controller: _password,
+        label: t('Master-Passwort des Kontos', 'Master password of the account'),
+        enabled: !_busy,
+        onSubmitted: (_) => _join(),
+      ),
+      if (_error != null) ...[
+        const SizedBox(height: 12),
+        Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+      ],
+      const SizedBox(height: 20),
+      FilledButton(
+        key: const Key('join-submit'),
+        onPressed: _busy ? null : _join,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: _busy
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
+              : Text(t('Abholen', 'Fetch')),
+        ),
+      ),
+      const SizedBox(height: 8),
+      TextButton(
+        onPressed: _busy ? null : () => _setJoining(false),
+        child: Text(t('Stattdessen einen neuen Tresor anlegen', 'Create a new vault instead')),
       ),
     ];
   }

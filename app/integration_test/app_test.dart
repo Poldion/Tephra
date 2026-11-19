@@ -5,6 +5,13 @@
 //       --dart-define=TEPHRA_TEST_PORT=<Port des Testservers>
 //
 // Mit `--dart-define=TEPHRA_TEST_SHOTS=<Ordner>` legt der Test Bildschirmfotos ab.
+// Mit `--dart-define=TEPHRA_TEST_UPDATE=true` lädt er zusätzlich eine echte
+// Aktualisierung von GitHub und prüft ihre Prüfsumme (braucht Netz, rund 20 MB).
+//
+// Mit `--dart-define=TEPHRA_TEST_SYNC=<Adresse>` legt er am Ende ein Konto „tester“ auf einem
+// Sync-Server an (`tephra-server --registration open`) und lädt den Tresor hoch. Ein zweiter Lauf
+// mit leerem Tresorpfad und `--dart-define=TEPHRA_TEST_JOIN=<Adresse>` spielt das zweite Gerät:
+// Er holt den Tresor dieses Kontos ab und prüft, dass der Host angekommen ist.
 //
 // Auf einem Android-Emulator erreicht die App den Testserver des Rechners
 // unter 10.0.2.2; der Tresor liegt im Datenordner der App und muss fehlen
@@ -29,15 +36,24 @@ import 'package:material_ui/material_ui.dart';
 import 'package:tephra/main.dart';
 import 'package:tephra/src/paths.dart';
 import 'package:tephra/src/rust/api/app.dart';
+import 'package:tephra/src/rust/api/files.dart';
 import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
 import 'package:tephra/src/settings.dart';
 import 'package:tephra/src/text.dart';
 import 'package:tephra/src/ui/terminal_page.dart';
+import 'package:tephra/src/update.dart';
+import 'package:xterm/xterm.dart' show TerminalView;
+
+import 'test_key.dart';
 
 const _host = String.fromEnvironment('TEPHRA_TEST_HOST', defaultValue: '127.0.0.1');
 const _port = int.fromEnvironment('TEPHRA_TEST_PORT');
 const _shots = String.fromEnvironment('TEPHRA_TEST_SHOTS');
+const _update = bool.fromEnvironment('TEPHRA_TEST_UPDATE');
+const _sync = String.fromEnvironment('TEPHRA_TEST_SYNC');
+const _join = String.fromEnvironment('TEPHRA_TEST_JOIN');
+const _account = 'tester';
 const _password = 'ein langes Master-Passwort';
 
 Future<void> _shot(WidgetTester tester, String name) async {
@@ -85,6 +101,50 @@ void _step(String name) => debugPrint('Abschnitt: $name');
 
 String _screen(TerminalSession session) => session.terminal.buffer.getText();
 
+/// Öffnet den Dialog des Abgleichs und wartet, bis er einen abgeschlossenen Abgleich meldet.
+Future<void> _syncDone(WidgetTester tester) async {
+  await _appears(tester, find.byKey(const Key('sync-connected')));
+  await _appears(tester, find.byKey(const Key('sync-done')));
+  await _appears(tester, find.text(t('Dieses Gerät', 'This device')));
+  expect(find.byKey(const Key('sync-error')), findsNothing);
+}
+
+/// Das zweite Gerät: holt den Tresor eines bestehenden Kontos ab.
+Future<void> _joinDevice(WidgetTester tester) async {
+  _step('Tresor abholen');
+  await _tap(tester, find.byKey(const Key('gate-join')));
+  await _type(tester, find.byKey(const Key('join-server')), _join);
+  await _type(tester, find.byKey(const Key('join-username')), _account);
+  await _type(tester, find.byKey(const Key('join-password')), 'falsches Passwort');
+  await _tap(tester, find.byKey(const Key('join-submit')));
+  await _until(
+    tester,
+    () => tester.widget<FilledButton>(find.byKey(const Key('join-submit'))).onPressed != null,
+    'Ablehnung',
+  );
+  expect(isUnlocked(), isFalse);
+  expect(vaultExists(path: vaultPath), isFalse, reason: 'ohne Anmeldung entsteht kein Tresor');
+  await _type(tester, find.byKey(const Key('join-password')), _password);
+  await _tap(tester, find.byKey(const Key('join-submit')));
+  await _appears(tester, find.text('Testserver'));
+  expect(isUnlocked(), isTrue);
+  expect(listKeys(), isNotEmpty);
+  expect(listIdentities().map((identity) => identity.label), contains('tester'));
+
+  _step('Abgleich auf dem zweiten Gerät');
+  await _tap(tester, find.byKey(const Key('sync-button')));
+  await _syncDone(tester);
+  expect(find.byIcon(Icons.devices_other_rounded), findsWidgets, reason: 'das erste Gerät steht in der Liste');
+  await _tap(tester, find.text(t('Schließen', 'Close')));
+
+  // Der Tresor lässt sich mit dem Master-Passwort des Kontos sperren und wieder öffnen.
+  await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
+  await _appears(tester, find.text(t('Tresor entsperren', 'Unlock vault')));
+  await _type(tester, find.byType(TextField).first, _password);
+  await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
+  await _appears(tester, find.text('Testserver'));
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -97,6 +157,11 @@ void main() {
 
     await tester.pumpWidget(const TerminalApp());
     await tester.pump(const Duration(milliseconds: 300));
+
+    if (_join.isNotEmpty) {
+      await _joinDevice(tester);
+      return;
+    }
 
     // ---- Tresor anlegen
     _step('Tresor anlegen');
@@ -137,6 +202,24 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, t('Erzeugen', 'Generate')));
     await _appears(tester, find.textContaining('ssh-ed25519'));
     await _shot(tester, '04-schluessel');
+
+    // ---- Alten, passphrasegeschützten Schlüssel einlesen: Die Fehler sagen, woran es liegt
+    _step('Schlüssel importieren');
+    String failure(String? passphrase) {
+      try {
+        importKey(label: 'Alt', pem: legacyKeyPem, passphrase: passphrase, localOnly: false);
+        return '';
+      } catch (error) {
+        return error.toString();
+      }
+    }
+
+    expect(failure(null), contains(t('sie fehlt', 'sie fehlt')));
+    expect(failure('falsch'), contains('stimmt nicht'));
+    expect(failure(legacyKeyPassphrase), isEmpty);
+    final imported = listKeys().firstWhere((key) => key.label == 'Alt');
+    expect(imported.publicKey, startsWith(legacyKeyPublic));
+    deleteItem(id: imported.id);
 
     // ---- VPN-Profil importieren
     final random = Random.secure();
@@ -202,6 +285,66 @@ void main() {
     await _until(tester, () => _screen(session).contains('Grüße aus der App ✓'), 'Echo');
     await _shot(tester, '11-terminal');
 
+    // ---- Dateien des Hosts: anlegen, übertragen, umbenennen, löschen
+    _step('Dateien');
+    await _tap(tester, find.byKey(const ValueKey('view-files')));
+    await _appears(tester, find.text('etc'));
+    await _shot(tester, '11-dateien');
+    final files = session.files;
+    await _tap(tester, find.byTooltip(t('Neuer Ordner', 'New folder')));
+    await _type(tester, find.byType(TextField).last, 'ablage');
+    await _tap(tester, find.widgetWithText(FilledButton, t('Anlegen', 'Create')));
+    await _appears(tester, find.text('ablage'));
+    await _tap(tester, find.text('ablage'));
+    await _until(tester, () => files.remotePath == '/ablage' && !files.remoteLoading, 'Ordner öffnen');
+    expect(files.remote, isEmpty);
+
+    // Größer als ein Lesepuffer, damit die Übertragung über mehrere Stücke geht.
+    final temp = Directory.systemTemp.createTempSync('tephra-test');
+    final source = File('${temp.path}/quelle.bin')
+      ..writeAsBytesSync([for (var i = 0; i < 700 * 1024; i++) (i * 31 + 7) % 251]);
+    final up = files.upload(source.path, name: 'quelle.bin');
+    await _until(tester, () => !up.running, 'Hochladen');
+    expect(up.error, isNull);
+    expect(up.finished, isTrue);
+    await files.refreshRemote();
+    expect(files.remote.single.name, 'quelle.bin');
+    expect(files.remote.single.size.toInt(), source.lengthSync());
+
+    final back = File('${temp.path}/zurueck.bin');
+    final down = files.download(files.remote.single, back.path);
+    await _until(tester, () => !down.running, 'Herunterladen');
+    expect(down.error, isNull);
+    expect(back.readAsBytesSync(), source.readAsBytesSync());
+    expect(File('${back.path}.part').existsSync(), isFalse, reason: 'die unfertige Datei darf nicht liegen bleiben');
+    await _shot(tester, '11-uebertragungen');
+
+    await files.rename(files.remote.single, 'kopie.bin');
+    expect(files.remote.single.name, 'kopie.bin');
+    final missing = files.download(files.remote.single, '${temp.path}/x/../\u0000');
+    await _until(tester, () => !missing.running, 'Fehlschlag');
+    expect(missing.error, isNotNull, reason: 'ein unmögliches Ziel muss als Fehler ankommen');
+    await files.goRemote('/');
+    await files.delete(files.remote.firstWhere((entry) => entry.name == 'ablage'));
+    expect(files.remote.any((entry) => entry.name == 'ablage'), isFalse, reason: 'der Ordner samt Inhalt ist weg');
+    await files.goRemote('/gibt-es-nicht');
+    expect(files.remotePath, '/', reason: 'ein unlesbares Ziel lässt die Ansicht, wo sie war');
+    expect(files.remoteError, isNotNull);
+    temp.deleteSync(recursive: true);
+    await _tap(tester, find.byKey(const ValueKey('view-terminal')));
+    await _appears(tester, find.byType(TerminalView));
+
+    // ---- Öffentlichen Schlüssel auf dem Host eintragen
+    _step('Schlüssel einrichten');
+    final keyId = listKeys().single.id;
+    expect(await installKeyOnHost(keyId: keyId, hostId: session.host.id), isTrue);
+    expect(
+      await installKeyOnHost(keyId: keyId, hostId: session.host.id),
+      isFalse,
+      reason: 'steht schon dort',
+    );
+    expect((await filesList(hostId: session.host.id, path: '/.ssh')).single.name, 'authorized_keys');
+
     // ---- Shell beenden und neu verbinden: der Schlüssel ist jetzt bekannt
     _step('Shell beenden');
     session.terminal.textInput('exit');
@@ -238,5 +381,35 @@ void main() {
     await _until(tester, () => _screen(session).contains('bereit>'), 'Eingabeaufforderung');
     await _tap(tester, find.byTooltip(t('Sitzung schließen', 'Close session')));
     await _appears(tester, find.text(t('Keine offenen Sitzungen', 'No open sessions')));
+
+    // ---- Abgleich: Konto auf dem Sync-Server anlegen, der Tresor wird hochgeladen
+    if (_sync.isNotEmpty) {
+      _step('Abgleich');
+      await _tap(tester, find.byKey(const Key('sync-button')));
+      await _type(tester, find.byKey(const Key('sync-server')), _sync);
+      await _type(tester, find.byKey(const Key('sync-username')), _account);
+      await _type(tester, find.byKey(const Key('sync-password')), 'falsches Passwort');
+      await _tap(tester, find.byKey(const Key('sync-register')));
+      await _appears(tester, find.byKey(const Key('sync-error')));
+      expect(find.byKey(const Key('sync-connected')), findsNothing);
+      await _type(tester, find.byKey(const Key('sync-password')), _password);
+      await _tap(tester, find.byKey(const Key('sync-register')));
+      await _syncDone(tester);
+      await _tap(tester, find.text(t('Schließen', 'Close')));
+    }
+
+    // ---- Aktualisierung: echte Veröffentlichung finden, laden und ihre Prüfsumme prüfen
+    if (_update) {
+      _step('Aktualisierung');
+      final update = (await checkForUpdate(current: '0.1.0', kind: UpdateKind.installer))!;
+      expect(compareVersions(update.version, '0.2.0'), greaterThanOrEqualTo(0));
+      expect(update.kind, UpdateKind.installer);
+      final folder = Directory.systemTemp.createTempSync('tephra-update');
+      final target = '${folder.path}/setup.exe';
+      await downloadUpdate(update, target);
+      expect(File(target).lengthSync(), greaterThan(10 * 1024 * 1024));
+      folder.deleteSync(recursive: true);
+      expect(await checkForUpdate(current: '99.0.0'), isNull);
+    }
   });
 }

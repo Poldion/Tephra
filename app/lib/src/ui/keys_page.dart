@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../rust/api/app.dart';
 import '../text.dart';
 import 'common.dart';
+import 'sync_ui.dart';
 
 /// SSH-Schlüssel: erzeugen, importieren, öffentlichen Teil kopieren.
 class KeysPage extends StatefulWidget {
@@ -13,7 +14,10 @@ class KeysPage extends StatefulWidget {
   State<KeysPage> createState() => _KeysPageState();
 }
 
-class _KeysPageState extends State<KeysPage> {
+class _KeysPageState extends State<KeysPage> with ReloadOnSync<KeysPage> {
+  @override
+  void reloadFromVault() => _reload();
+
   List<KeyView> _keys = [];
   String? _error;
 
@@ -43,6 +47,44 @@ class _KeysPageState extends State<KeysPage> {
   Future<void> _copy(KeyView key) async {
     await Clipboard.setData(ClipboardData(text: key.publicKey));
     if (mounted) showMessage(context, t('Öffentlicher Schlüssel kopiert.', 'Public key copied.'));
+  }
+
+  /// Trägt den öffentlichen Teil des Schlüssels auf einem Host ein.
+  Future<void> _install(KeyView key) async {
+    final List<HostView> hosts;
+    try {
+      hosts = listHosts();
+    } catch (error) {
+      showMessage(context, errorText(error), error: true);
+      return;
+    }
+    if (hosts.isEmpty) {
+      showMessage(context, t('Lege zuerst einen Host an.', 'Add a host first.'));
+      return;
+    }
+    final host = await showDialog<HostView>(
+      context: context,
+      builder: (_) => _InstallDialog(keyLabel: key.label, hosts: hosts),
+    );
+    if (host == null || !mounted) return;
+    try {
+      final added = await installKeyOnHost(keyId: key.id, hostId: host.id);
+      if (!mounted) return;
+      showMessage(
+        context,
+        added
+            ? t(
+                '„${key.label}“ ist auf „${host.label}“ eingetragen.',
+                '"${key.label}" is now installed on "${host.label}".',
+              )
+            : t(
+                '„${key.label}“ war auf „${host.label}“ schon eingetragen.',
+                '"${key.label}" was already installed on "${host.label}".',
+              ),
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, errorText(error), error: true);
+    }
   }
 
   Future<void> _delete(KeyView key) async {
@@ -145,10 +187,16 @@ class _KeysPageState extends State<KeysPage> {
                           icon: const Icon(Icons.copy_rounded),
                           onPressed: () => _copy(key),
                         ),
-                        IconButton(
-                          tooltip: t('Löschen', 'Delete'),
-                          icon: const Icon(Icons.delete_outline_rounded),
-                          onPressed: () => _delete(key),
+                        PopupMenuButton<String>(
+                          tooltip: t('Mehr', 'More'),
+                          onSelected: (action) => action == 'install' ? _install(key) : _delete(key),
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                              value: 'install',
+                              child: Text(t('Auf einem Host einrichten', 'Install on a host')),
+                            ),
+                            PopupMenuItem(value: 'delete', child: Text(t('Löschen', 'Delete'))),
+                          ],
                         ),
                       ],
                     ),
@@ -156,6 +204,63 @@ class _KeysPageState extends State<KeysPage> {
                 );
               },
             ),
+    );
+  }
+}
+
+/// Fragt, auf welchem Host ein Schlüssel eingerichtet werden soll.
+class _InstallDialog extends StatefulWidget {
+  const _InstallDialog({required this.keyLabel, required this.hosts});
+
+  final String keyLabel;
+  final List<HostView> hosts;
+
+  @override
+  State<_InstallDialog> createState() => _InstallDialogState();
+}
+
+class _InstallDialogState extends State<_InstallDialog> {
+  late HostView _host = widget.hosts.first;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(t('„${widget.keyLabel}“ auf einem Host einrichten', 'Install "${widget.keyLabel}" on a host')),
+      content: SizedBox(
+        width: 440,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DropdownButtonFormField<HostView>(
+              initialValue: _host,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Host'),
+              items: [
+                for (final host in widget.hosts)
+                  DropdownMenuItem(
+                    value: host,
+                    child: Text(host.label, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: (host) => setState(() => _host = host ?? _host),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              t(
+                'Tephra meldet sich mit der bisherigen Anmeldung des Hosts an und trägt den öffentlichen Schlüssel dort in ~/.ssh/authorized_keys ein. Braucht die Anmeldung eine Eingabe von dir, öffne vorher eine Sitzung zu dem Host. Danach kannst du dem Host eine Identität mit diesem Schlüssel zuweisen.',
+                'Tephra signs in with the current credentials of the host and adds the public key to ~/.ssh/authorized_keys there. If signing in needs input from you, open a session to the host first. Afterwards you can give the host an identity that uses this key.',
+              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(t('Abbrechen', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(context, _host), child: Text(t('Einrichten', 'Install'))),
+      ],
     );
   }
 }

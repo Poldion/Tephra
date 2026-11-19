@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use tephra_core::model::{Host, ItemId, SshKey};
-use tephra_core::ssh::{Prompt, PtyOptions, ShellEvent, ShellInput};
-use tephra_core::{ConnectUi, Core, HostKeyQuestion, HostKeyState};
+use tephra_core::ssh::{Prompt, PtyOptions, SftpSession, ShellEvent, ShellInput, SshClient};
+use tephra_core::{ConnectUi, Core, HostKeyQuestion, HostKeyState, NonInteractive};
 use tokio::sync::oneshot;
 
 /// Eigene Laufzeit für alles Asynchrone im Kern (Verbindungen, Tunnel).
@@ -29,6 +29,12 @@ pub(crate) struct App {
     pub(crate) tasks: HashMap<u32, tokio::task::AbortHandle>,
     /// Offene Rückfragen an den Nutzer, nach ihrer Kennung.
     pub(crate) pending: HashMap<u32, oneshot::Sender<Answer>>,
+    /// Offene SFTP-Sitzungen je Host, jeweils mit der Verbindung des Kerns, über die sie laufen.
+    pub(crate) files: HashMap<ItemId, (Arc<SshClient>, Arc<SftpSession>)>,
+    /// Laufende Dateiübertragungen, um sie abbrechen zu können.
+    pub(crate) transfers: HashMap<u32, tokio::task::AbortHandle>,
+    /// Der fortlaufende Abgleich mit dem Sync-Server, solange er läuft.
+    pub(crate) sync: Option<tokio::task::AbortHandle>,
     pub(crate) next_id: u32,
 }
 
@@ -52,6 +58,24 @@ pub(crate) fn next_id() -> u32 {
     let mut app = app();
     app.next_id = app.next_id.wrapping_add(1).max(1);
     app.next_id
+}
+
+/// SFTP-Sitzung zu einem Host. Die Verbindung kommt aus dem Vorrat des Kerns;
+/// fehlt sie oder ist sie abgerissen, wird sie ohne Rückfragen neu aufgebaut.
+pub(crate) async fn sftp(host: ItemId) -> Result<Arc<SftpSession>> {
+    if let Some((client, session)) = app().files.get(&host).cloned() {
+        if !client.is_closed() {
+            return Ok(session);
+        }
+    }
+    let client = core()?.connect_pooled(host, Arc::new(NonInteractive)).await?;
+    let session = Arc::new(client.sftp().await?);
+    app().files.insert(host, (client, session.clone()));
+    Ok(session)
+}
+
+pub(crate) fn forget_sftp(host: ItemId) {
+    app().files.remove(&host);
 }
 
 pub(crate) fn parse_id(id: &str) -> Result<ItemId> {
