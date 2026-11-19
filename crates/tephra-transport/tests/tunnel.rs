@@ -222,11 +222,16 @@ async fn ziel_ausserhalb_der_allowed_ips() {
 async fn abgebrochene_verbindung_meldet_reset() {
     let Pair { client, server } = pair(false).await;
     let mut listener = server.listen(7000).expect("listen");
+    let (connected, client_connected) = tokio::sync::oneshot::channel::<()>();
     let accepted = tokio::spawn(async move {
         let stream = listener.accept().await.expect("accept");
+        // Erst abbrechen, wenn die Gegenseite die Verbindung hat; sonst sähe sie den
+        // Abbruch je nach Zeitpunkt schon beim Verbindungsaufbau.
+        let _ = client_connected.await;
         drop(stream); // ohne ordentliches Schließen
     });
     let mut stream = client.connect(server_addr(7000)).await.expect("connect");
+    connected.send(()).expect("Gegenseite wartet");
     accepted.await.expect("task");
     let mut buf = [0u8; 1];
     let result = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buf)).await.expect("kein Hänger");
