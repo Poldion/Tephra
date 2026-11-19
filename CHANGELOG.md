@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] – 2026-11-19
+
+### Fixed
+
+- **Terminal on Windows and Linux:** Ctrl+Insert copies the selection; until now the key went to the host instead.
+  Shift+Insert pastes, also with the Insert key of the number pad (Num Lock off). Ctrl+Shift+C and Ctrl+Shift+V work
+  as before, and a right click copies the selection or pastes.
+
 ## [0.3.0] – 2026-11-19
 
 ### Added

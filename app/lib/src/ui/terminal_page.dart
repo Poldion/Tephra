@@ -174,12 +174,21 @@ class _Tab extends StatelessWidget {
 const _terminalBackground = Color(0xFF1E1E1E);
 const _terminalForeground = Color(0xFFCCCCCC);
 
-final _shortcuts = <ShortcutActivator, Intent>{
+const _paste = PasteTextIntent(SelectionChangedCause.keyboard);
+
+/// Tastenkürzel des Terminals für die Zwischenablage. Strg+C und Strg+V
+/// gehören dem Programm auf dem Host; kopiert und eingefügt wird deshalb mit
+/// der Umschalttaste dazu oder, wie unter Windows und Linux üblich, mit Einfg.
+/// Die Einfg-Taste des Ziffernblocks meldet sich bei ausgeschaltetem Num als
+/// eigene Taste und steht darum doppelt da.
+final terminalShortcuts = <ShortcutActivator, Intent>{
   const SingleActivator(LogicalKeyboardKey.keyC, control: true, shift: true): CopySelectionTextIntent.copy,
-  const SingleActivator(LogicalKeyboardKey.keyV, control: true, shift: true): const PasteTextIntent(
-    SelectionChangedCause.keyboard,
-  ),
-  const SingleActivator(LogicalKeyboardKey.insert, shift: true): const PasteTextIntent(SelectionChangedCause.keyboard),
+  const SingleActivator(LogicalKeyboardKey.keyV, control: true, shift: true): _paste,
+  const SingleActivator(LogicalKeyboardKey.insert, control: true): CopySelectionTextIntent.copy,
+  const SingleActivator(LogicalKeyboardKey.insert, shift: true): _paste,
+  const SingleActivator(LogicalKeyboardKey.numpad0, control: true, numLock: LockState.unlocked):
+      CopySelectionTextIntent.copy,
+  const SingleActivator(LogicalKeyboardKey.numpad0, shift: true, numLock: LockState.unlocked): _paste,
 };
 
 /// Am Desktop kommen die Tasten direkt von der Tastatur. Die Texteingabe des
@@ -279,7 +288,7 @@ class _SessionViewState extends State<SessionView> {
                           fontFamily: monoFonts.first,
                           fontFamilyFallback: monoFonts,
                         ),
-                        shortcuts: _shortcuts,
+                        shortcuts: terminalShortcuts,
                         hardwareKeyboardOnly: _hardwareKeyboard,
                         onSecondaryTapDown: (_, _) => _secondaryTap(),
                       ),
