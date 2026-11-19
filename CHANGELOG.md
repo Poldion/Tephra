@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Sync server as a container image:** `ghcr.io/poldion/tephra-server` for amd64 and arm64, published with every
   release. The Compose file in `deploy/` uses it.
 
+### Fixed
+
+- **App on Linux:** the first error from the core, for example a wrong master password, crashed the app. Collecting a
+  stack trace for the error message collided with the stack unwinder that comes with Flutter on Linux; the app no
+  longer collects stack traces.
+
 ## [0.1.0] – 2026-11-18
 
 First release, a preview: the command line `tephra` and the sync server `tephra-server` for Windows and Linux, and a

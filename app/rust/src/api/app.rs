@@ -19,7 +19,12 @@ use tephra_core::{Core, KdfParams};
 
 #[frb(init)]
 pub fn init_app() {
-    flutter_rust_bridge::setup_default_user_utils();
+    // Rücklaufspuren bleiben aus, auch wenn die Umgebung sie verlangt. Unter Linux bringt
+    // die Flutter-Bibliothek einen eigenen Stack-Abwickler mit, der sich mit dem von Rust
+    // nicht verträgt: Schon das Erfassen einer Spur – etwa für die Fehlermeldung nach
+    // einem falschen Passwort – ließe die App abstürzen.
+    std::env::set_var("RUST_BACKTRACE", "0");
+    std::env::set_var("RUST_LIB_BACKTRACE", "0");
 }
 
 // ------------------------------------------------------------------ Tresor
