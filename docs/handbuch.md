@@ -350,7 +350,11 @@ Telefon installiert ist.
 
 Gut zu wissen:
 
-- **Adressen müssen mit `https://` beginnen.** Einfaches `http://` wird nur für `localhost` angenommen.
+- **Adressen beginnen mit `https://`.** Einfaches `http://` wird nur für `localhost` angenommen – und für einen Server
+  im eigenen Netz, wenn du es ausdrücklich erlaubst: mit `--allow-http` bei `tephra sync register` und
+  `tephra sync join`, in der App mit dem Haken „Unverschlüsselt verbinden“, der unter einer solchen Adresse erscheint.
+  Die Erlaubnis gilt für diese Verbindung, bis du sie trennst. Was du damit aufgibst, steht unter
+  „Sync-Server betreiben“.
 - **Konflikte.** Ändern zwei Geräte denselben Eintrag, werden die Änderungen feldweise zusammengeführt; beim selben
   Feld gewinnt die spätere. Eine Löschung gewinnt gegen eine gleichzeitige Änderung.
 - **Nicht abgeglichen** werden Schlüssel mit `--local-only`, MCP-Clients, Freigaben und Protokoll sowie die Sitzung
@@ -621,6 +625,14 @@ bereitstellt. Clients lehnen `http://`-Adressen ab, außer für `localhost`, und
 Zertifikatsspeicher des Betriebssystems. Anfragen an `/v1/events` bleiben bis zu 55 Sekunden offen, der Proxy darf
 Verbindungen also nicht früher trennen. `GET /healthz` antwortet mit `ok`.
 
+**Im eigenen Netz ohne TLS.** Ist der Server nur in deinem eigenen Netz erreichbar – zu Hause oder über ein VPN –,
+kann er ohne Proxy laufen: mit `--bind 0.0.0.0:8787` und ohne `--behind-proxy`. Die Clients verbinden sich dann mit
+`http://<adresse>:8787` und brauchen dafür deine ausdrückliche Erlaubnis (`--allow-http`, in der App der Haken
+„Unverschlüsselt verbinden“). Der Inhalt des Tresors bleibt auch so verschlüsselt. Wer in diesem Netz mitliest, sieht
+aber den Anmeldenachweis und die Sitzungstokens. Damit kann er sich am Server als eines deiner Geräte anmelden, die
+verschlüsselten Datensätze abholen und daran Master-Passwörter durchprobieren, Geräte entfernen und das Konto auf dem
+Server löschen. Über das Internet gehört deshalb immer TLS davor.
+
 **Hinter einem Proxy `--behind-proxy` setzen.** Fehlversuche bei der Anmeldung sind je Benutzername und Absender
 begrenzt: 10 innerhalb von 5 Minuten. Ohne die Option scheint jede Anfrage vom Proxy zu kommen, und ein Einzelner, der
 Passwörter rät, würde alle bremsen. Mit ihr gilt als Absender die letzte Adresse in `X-Forwarded-For` – die, die dein
@@ -659,6 +671,9 @@ TLS-Proxy und ein `Caddyfile`. Die Compose-Datei verwendet das veröffentlichte 
 Die Datenbank liegt im Volume `sync-data`. Der Server läuft als unprivilegierter Benutzer in einem schreibgeschützten
 Container, mit gesetztem `TEPHRA_SERVER_BEHIND_PROXY`, weil Caddy davorsteht. `docker compose exec sync tephra-server
 accounts` listet die Konten.
+
+Für einen Server nur im eigenen Netz ohne TLS (siehe oben) entfällt der Dienst `caddy`. Der Dienst `sync` bekommt dann
+`ports: ["8787:8787"]` statt `expose`, und die Zeile `TEPHRA_SERVER_BEHIND_PROXY` wird entfernt.
 
 ### Mit systemd
 

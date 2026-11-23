@@ -216,6 +216,9 @@ The model is treated as untrusted: it may be wrong, or it may follow instruction
 - **Metadata on the sync server:** sizes in steps, times, deletion markers, number of records, device names.
 - **Weak master passwords.** The minimum length is eight characters; that is a lower bound, not a recommendation.
 - **The transport to the sync server** is whatever TLS your reverse proxy provides; the client checks the certificate
-  against the certificate store of the operating system. Clients refuse plain `http://` except for `localhost`. Even
-  without TLS the contents of the vault would stay encrypted, but session tokens and the auth key would not.
+  against the certificate store of the operating system. Clients refuse plain `http://` except for `localhost` – and
+  unless you allow it explicitly for a server in your own network (`--allow-http`, in the app "Connect without
+  encryption"). Without TLS the contents of the vault stay encrypted, but session tokens and the auth key do not:
+  whoever listens in can sign in as a device, fetch the ciphertexts and try master passwords against them, remove
+  devices and delete the account. That choice is therefore meant only for a network you trust.
 - **Side channels and forensic traces** in memory, swap or crash dumps of the operating system.

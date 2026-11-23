@@ -215,9 +215,18 @@ enum SyncCommand {
         username: String,
         #[arg(long)]
         invite: Option<String>,
+        /// Erlaubt eine unverschlüsselte http-Adresse – nur für einen Server im eigenen Netz.
+        #[arg(long)]
+        allow_http: bool,
     },
     /// Richtet dieses Gerät als weiteres Gerät eines bestehenden Kontos ein.
-    Join { server: String, username: String },
+    Join {
+        server: String,
+        username: String,
+        /// Erlaubt eine unverschlüsselte http-Adresse – nur für einen Server im eigenen Netz.
+        #[arg(long)]
+        allow_http: bool,
+    },
     /// Meldet dieses Gerät neu an (abgelaufene Sitzung, geändertes Passwort).
     Reconnect,
     /// Gleicht jetzt einmal ab.
@@ -780,13 +789,12 @@ fn device_name() -> String {
 }
 
 async fn sync(path: &Path, command: SyncCommand) -> Fallible {
-    if let SyncCommand::Join { server, username } = &command {
+    if let SyncCommand::Join { server, username, allow_http } = &command {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(text)?;
         }
-        let core = Sync::join(path, server, username, &password("Master-Passwort des Kontos").await?, &device_name())
-            .await
-            .map_err(text)?;
+        let master = password("Master-Passwort des Kontos").await?;
+        let core = Sync::join(path, server, username, &master, &device_name(), *allow_http).await.map_err(text)?;
         let hosts = core.with_vault(|v| v.list::<Host>()).map_err(text)?.len();
         println!("Gerät eingerichtet, {hosts} Host(s) abgeholt. Tresor: {}", path.display());
         return Ok(());
@@ -797,8 +805,10 @@ async fn sync(path: &Path, command: SyncCommand) -> Fallible {
     let sync = Sync::new(core);
     match command {
         SyncCommand::Join { .. } => {}
-        SyncCommand::Register { server, username, invite } => {
-            sync.register(&server, &username, &master, &device_name(), invite.as_deref()).await.map_err(text)?;
+        SyncCommand::Register { server, username, invite, allow_http } => {
+            sync.register(&server, &username, &master, &device_name(), invite.as_deref(), allow_http)
+                .await
+                .map_err(text)?;
             let report = sync.sync_once().await.map_err(text)?;
             let noun = if report.pushed == 1 { "Datensatz" } else { "Datensätze" };
             println!("Konto „{username}“ angelegt, {} {noun} hochgeladen.", report.pushed);

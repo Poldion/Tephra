@@ -36,12 +36,13 @@ async fn server() -> Server {
 async fn first_device(server: &Server) -> Sync {
     let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
     let sync = Sync::new(core);
-    sync.register(&server.url, "anna", PASSWORD, "Laptop", None).await.expect("registrieren");
+    sync.register(&server.url, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren");
     sync
 }
 
 async fn join(server: &Server, file: &str, name: &str) -> Sync {
-    let core = Sync::join(&server.dir.path().join(file), &server.url, "anna", PASSWORD, name).await.expect("beitreten");
+    let core =
+        Sync::join(&server.dir.path().join(file), &server.url, "anna", PASSWORD, name, false).await.expect("beitreten");
     Sync::new(core)
 }
 
@@ -160,8 +161,8 @@ async fn falsches_passwort_und_unbekanntes_konto_sehen_gleich_aus() {
     let server = server().await;
     first_device(&server).await;
     let dir = &server.dir;
-    let wrong = Sync::join(&dir.path().join("x.tephra"), &server.url, "anna", "falsch", "X").await;
-    let unknown = Sync::join(&dir.path().join("y.tephra"), &server.url, "niemand", "falsch", "X").await;
+    let wrong = Sync::join(&dir.path().join("x.tephra"), &server.url, "anna", "falsch", "X", false).await;
+    let unknown = Sync::join(&dir.path().join("y.tephra"), &server.url, "niemand", "falsch", "X", false).await;
     assert_eq!(server_error(wrong.map(|_| ())), codes::INVALID_CREDENTIALS);
     assert_eq!(server_error(unknown.map(|_| ())), codes::INVALID_CREDENTIALS);
     assert!(!dir.path().join("x.tephra").exists(), "nach fehlgeschlagener Anmeldung darf kein Tresor liegen bleiben");
@@ -194,14 +195,14 @@ async fn anmeldeversuche_werden_gebremst() {
     first_device(&server).await;
     let attempt = |n: usize| {
         let (path, url) = (server.dir.path().join(format!("v{n}.tephra")), server.url.clone());
-        async move { Sync::join(&path, &url, "anna", "falsch", "X").await.map(|_| ()) }
+        async move { Sync::join(&path, &url, "anna", "falsch", "X", false).await.map(|_| ()) }
     };
     for n in 0..3 {
         assert_eq!(server_error(attempt(n).await), codes::INVALID_CREDENTIALS);
     }
     assert_eq!(server_error(attempt(3).await), codes::TOO_MANY_REQUESTS);
     // Auch das richtige Passwort wird jetzt vorerst abgewiesen.
-    let right = Sync::join(&server.dir.path().join("r.tephra"), &server.url, "anna", PASSWORD, "X").await;
+    let right = Sync::join(&server.dir.path().join("r.tephra"), &server.url, "anna", PASSWORD, "X", false).await;
     assert_eq!(server_error(right.map(|_| ())), codes::TOO_MANY_REQUESTS);
 }
 
@@ -211,39 +212,42 @@ async fn registrierung_nach_einladung_und_doppelte_namen() {
     let new_vault =
         |file: &str| Sync::new(Core::create(&server.dir.path().join(file), PASSWORD, KDF).expect("tresor").0);
     let a = new_vault("a.tephra");
-    assert_eq!(server_error(a.register(&server.url, "anna", PASSWORD, "L", None).await), codes::INVALID_INVITE);
+    assert_eq!(server_error(a.register(&server.url, "anna", PASSWORD, "L", None, false).await), codes::INVALID_INVITE);
     assert_eq!(
-        server_error(a.register(&server.url, "anna", PASSWORD, "L", Some("falsch")).await),
+        server_error(a.register(&server.url, "anna", PASSWORD, "L", Some("falsch"), false).await),
         codes::INVALID_INVITE
     );
-    a.register(&server.url, "anna", PASSWORD, "L", Some(&invite)).await.expect("registrieren");
+    a.register(&server.url, "anna", PASSWORD, "L", Some(&invite), false).await.expect("registrieren");
     assert!(matches!(
-        a.register(&server.url, "anna", PASSWORD, "L", Some(&invite)).await,
+        a.register(&server.url, "anna", PASSWORD, "L", Some(&invite), false).await,
         Err(SyncError::AlreadyConnected)
     ));
 
     // Der Code gilt nur einmal.
     let b = new_vault("b.tephra");
     assert_eq!(
-        server_error(b.register(&server.url, "bert", PASSWORD, "L", Some(&invite)).await),
+        server_error(b.register(&server.url, "bert", PASSWORD, "L", Some(&invite), false).await),
         codes::INVALID_INVITE
     );
 
     let (open, _) = server_with(Config { registration: Registration::Open, ..Config::default() }).await;
     let c = Sync::new(Core::create(&open.dir.path().join("c.tephra"), PASSWORD, KDF).expect("tresor").0);
-    c.register(&open.url, "Carl", PASSWORD, "L", None).await.expect("registrieren");
+    c.register(&open.url, "Carl", PASSWORD, "L", None, false).await.expect("registrieren");
     let d = Sync::new(Core::create(&open.dir.path().join("d.tephra"), PASSWORD, KDF).expect("tresor").0);
-    assert_eq!(server_error(d.register(&open.url, "carl", PASSWORD, "L", None).await), codes::USERNAME_TAKEN);
-    assert_eq!(server_error(d.register(&open.url, "x", PASSWORD, "L", None).await), codes::INVALID_REQUEST);
+    assert_eq!(server_error(d.register(&open.url, "carl", PASSWORD, "L", None, false).await), codes::USERNAME_TAKEN);
+    assert_eq!(server_error(d.register(&open.url, "x", PASSWORD, "L", None, false).await), codes::INVALID_REQUEST);
     // Mit falschem Passwort wird gar nicht erst registriert.
     assert!(matches!(
-        d.register(&open.url, "dora", "falsch", "L", None).await,
+        d.register(&open.url, "dora", "falsch", "L", None, false).await,
         Err(SyncError::Core(CoreError::Vault(VaultError::WrongPassword)))
     ));
 
     let (closed, _) = server_with(Config { registration: Registration::Closed, ..Config::default() }).await;
     let e = Sync::new(Core::create(&closed.dir.path().join("e.tephra"), PASSWORD, KDF).expect("tresor").0);
-    assert_eq!(server_error(e.register(&closed.url, "emil", PASSWORD, "L", None).await), codes::REGISTRATION_CLOSED);
+    assert_eq!(
+        server_error(e.register(&closed.url, "emil", PASSWORD, "L", None, false).await),
+        codes::REGISTRATION_CLOSED
+    );
 }
 
 #[tokio::test]
@@ -313,9 +317,9 @@ async fn passwortwechsel_meldet_andere_geraete_ab() {
     assert_eq!(labels(&b), vec!["web"]);
 
     // Ein neues Gerät meldet sich nur noch mit dem neuen Passwort an.
-    let old = Sync::join(&server.dir.path().join("c.tephra"), &server.url, "anna", PASSWORD, "C").await;
+    let old = Sync::join(&server.dir.path().join("c.tephra"), &server.url, "anna", PASSWORD, "C", false).await;
     assert_eq!(server_error(old.map(|_| ())), codes::INVALID_CREDENTIALS);
-    Sync::join(&server.dir.path().join("d.tephra"), &server.url, "anna", "neues passwort", "D")
+    Sync::join(&server.dir.path().join("d.tephra"), &server.url, "anna", "neues passwort", "D", false)
         .await
         .expect("beitreten");
 }
@@ -406,13 +410,62 @@ async fn viele_datensaetze_werden_in_mehreren_anfragen_uebertragen() {
 
 #[test]
 fn nur_verschluesselte_oder_lokale_adressen() {
-    assert_eq!(normalize_url("https://sync.example.org/").expect("ok"), "https://sync.example.org");
-    assert!(normalize_url("http://127.0.0.1:8787").is_ok());
-    assert!(normalize_url("http://localhost:8787").is_ok());
-    assert!(matches!(normalize_url("http://sync.example.org"), Err(SyncError::InsecureUrl)));
-    assert!(matches!(normalize_url("http://192.168.1.10:8787"), Err(SyncError::InsecureUrl)));
-    assert!(matches!(normalize_url("ftp://sync.example.org"), Err(SyncError::InvalidUrl(_))));
-    assert!(matches!(normalize_url("kein url"), Err(SyncError::InvalidUrl(_))));
+    assert_eq!(normalize_url("https://sync.example.org/", false).expect("ok"), "https://sync.example.org");
+    assert!(normalize_url("http://127.0.0.1:8787", false).is_ok());
+    assert!(normalize_url("http://localhost:8787", false).is_ok());
+    assert!(normalize_url("http://[::1]:8787", false).is_ok());
+    assert!(matches!(normalize_url("http://sync.example.org", false), Err(SyncError::InsecureUrl)));
+    assert!(matches!(normalize_url("http://192.168.1.10:8787", false), Err(SyncError::InsecureUrl)));
+    assert!(matches!(normalize_url("HTTP://192.168.1.10:8787", false), Err(SyncError::InsecureUrl)));
+    assert!(matches!(normalize_url("ftp://sync.example.org", false), Err(SyncError::InvalidUrl(_))));
+    assert!(matches!(normalize_url("kein url", false), Err(SyncError::InvalidUrl(_))));
+}
+
+#[test]
+fn unverschluesselt_nur_mit_ausdruecklicher_erlaubnis() {
+    assert_eq!(normalize_url("http://192.168.1.10:8787/", true).expect("ok"), "http://192.168.1.10:8787");
+    assert!(normalize_url("http://nas.local:8787", true).is_ok());
+    assert!(normalize_url("https://sync.example.org", true).is_ok());
+    // Die Erlaubnis gilt nur für http, nicht für beliebige Schemata.
+    assert!(matches!(normalize_url("ftp://192.168.1.10", true), Err(SyncError::InvalidUrl(_))));
+
+    assert!(is_unencrypted("http://192.168.1.10:8787"));
+    assert!(is_unencrypted(" http://nas.local "));
+    assert!(!is_unencrypted("http://localhost:8787"));
+    assert!(!is_unencrypted("http://127.0.0.1:8787"));
+    assert!(!is_unencrypted("https://sync.example.org"));
+    assert!(!is_unencrypted("192.168.1.10"));
+}
+
+#[tokio::test]
+async fn unverschluesselter_server_im_eigenen_netz() {
+    // 127.0.0.2 liegt auf diesem Rechner, gilt der Prüfung aber wie jede
+    // Adresse im Netz als fremd.
+    let dir = tempfile::tempdir().expect("tmp");
+    let db = Db::open(&dir.path().join("server.sqlite")).expect("db");
+    let listener = tokio::net::TcpListener::bind("127.0.0.2:0").await.expect("bind");
+    let url = format!("http://{}", listener.local_addr().expect("addr"));
+    let config = Config { registration: Registration::Open, ..Config::default() };
+    tokio::spawn(tephra_server::serve(listener, db, config, std::future::pending()));
+    let (core, _) = Core::create(&dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    let second = dir.path().join("b.tephra");
+
+    // Ohne Erlaubnis geht nichts an den Server, und nichts wird angelegt.
+    let refused = a.register(&url, "anna", PASSWORD, "Laptop", None, false).await;
+    assert!(matches!(refused, Err(SyncError::InsecureUrl)));
+    assert!(a.connection().expect("verbindung").is_none());
+    assert!(matches!(Sync::join(&second, &url, "anna", PASSWORD, "Handy", false).await, Err(SyncError::InsecureUrl)));
+    assert!(!second.exists());
+
+    a.register(&url, "anna", PASSWORD, "Laptop", None, true).await.expect("registrieren");
+    a.core.with_vault(|v| v.insert(&host("nas"))).expect("insert");
+    assert_eq!(a.sync_once().await.expect("abgleich").pushed, 1);
+    let b = Sync::new(Sync::join(&second, &url, "anna", PASSWORD, "Handy", true).await.expect("beitreten"));
+    assert_eq!(labels(&b), vec!["nas"]);
+    // Die Erlaubnis steckt in der gespeicherten Adresse: Späteres Abgleichen fragt nicht erneut.
+    assert_eq!(b.connection().expect("verbindung").expect("verbunden").server, url);
+    b.sync_once().await.expect("abgleich");
 }
 
 #[tokio::test]
@@ -423,7 +476,7 @@ async fn einladung_gilt_auch_bei_gleichzeitigen_anfragen_nur_einmal() {
         let (url, invite, path) = (server.url.clone(), invite.clone(), server.dir.path().join(format!("p{n}.tephra")));
         tasks.push(tokio::spawn(async move {
             let sync = Sync::new(Core::create(&path, PASSWORD, KDF).expect("tresor").0);
-            sync.register(&url, &format!("nutzer{n}"), PASSWORD, "L", Some(&invite)).await.is_ok()
+            sync.register(&url, &format!("nutzer{n}"), PASSWORD, "L", Some(&invite), false).await.is_ok()
         }));
     }
     let mut created = 0;
@@ -440,17 +493,20 @@ async fn richtige_anmeldung_wird_nie_gebremst_und_fehlversuche_zaehlen_je_name()
     first_device(&server).await;
     // Viele korrekte Anmeldungen hintereinander sind kein Angriff.
     for n in 0..6 {
-        Sync::join(&server.dir.path().join(format!("ok{n}.tephra")), &server.url, "anna", PASSWORD, "X")
+        Sync::join(&server.dir.path().join(format!("ok{n}.tephra")), &server.url, "anna", PASSWORD, "X", false)
             .await
             .expect("korrekte anmeldung");
     }
     // Fehlversuche für einen anderen Namen sperren „anna" nicht aus.
     for n in 0..3 {
         let wrong =
-            Sync::join(&server.dir.path().join(format!("w{n}.tephra")), &server.url, "berta", "falsch", "X").await;
+            Sync::join(&server.dir.path().join(format!("w{n}.tephra")), &server.url, "berta", "falsch", "X", false)
+                .await;
         assert_eq!(server_error(wrong.map(|_| ())), codes::INVALID_CREDENTIALS);
     }
-    Sync::join(&server.dir.path().join("danach.tephra"), &server.url, "anna", PASSWORD, "X").await.expect("anna");
+    Sync::join(&server.dir.path().join("danach.tephra"), &server.url, "anna", PASSWORD, "X", false)
+        .await
+        .expect("anna");
 }
 
 #[tokio::test]
@@ -520,7 +576,7 @@ async fn konten_sind_voneinander_getrennt() {
     let anna = first_device(&server).await;
     let (core, _) = Core::create(&server.dir.path().join("bert.tephra"), "anderes passwort", KDF).expect("tresor");
     let bert = Sync::new(core);
-    bert.register(&server.url, "bert", "anderes passwort", "PC", None).await.expect("registrieren");
+    bert.register(&server.url, "bert", "anderes passwort", "PC", None, false).await.expect("registrieren");
 
     let annas_host = anna.core.with_vault(|v| v.insert(&host("annas-server"))).expect("insert");
     anna.sync_once().await.expect("abgleich");
@@ -551,7 +607,8 @@ async fn konten_sind_voneinander_getrennt() {
     anna.sync_once().await.expect("abgleich");
     assert_eq!(labels(&anna), vec!["annas-server"], "fremder Löschmarker hat Annas Daten erreicht");
     // Berts Passwort gilt nicht für Annas Konto.
-    let wrong = Sync::join(&server.dir.path().join("x.tephra"), &server.url, "anna", "anderes passwort", "X").await;
+    let wrong =
+        Sync::join(&server.dir.path().join("x.tephra"), &server.url, "anna", "anderes passwort", "X", false).await;
     assert_eq!(server_error(wrong.map(|_| ())), codes::INVALID_CREDENTIALS);
 }
 
@@ -561,7 +618,7 @@ async fn konto_loeschen_verlangt_das_passwort_und_entfernt_alles() {
     let anna = first_device(&server).await;
     let (core, _) = Core::create(&server.dir.path().join("bert.tephra"), "anderes passwort", KDF).expect("tresor");
     let bert = Sync::new(core);
-    bert.register(&server.url, "bert", "anderes passwort", "PC", None).await.expect("registrieren");
+    bert.register(&server.url, "bert", "anderes passwort", "PC", None, false).await.expect("registrieren");
     anna.core.with_vault(|v| v.insert(&host("web"))).expect("insert");
     anna.sync_once().await.expect("abgleich");
 
@@ -590,7 +647,7 @@ async fn konto_loeschen_verlangt_das_passwort_und_entfernt_alles() {
     delete(PASSWORD).await.expect("löschen");
 
     assert!(matches!(anna.sync_once().await, Err(SyncError::SessionExpired)));
-    let gone = Sync::join(&server.dir.path().join("neu.tephra"), &server.url, "anna", PASSWORD, "X").await;
+    let gone = Sync::join(&server.dir.path().join("neu.tephra"), &server.url, "anna", PASSWORD, "X", false).await;
     assert_eq!(server_error(gone.map(|_| ())), codes::INVALID_CREDENTIALS);
     // Das andere Konto ist unberührt, der lokale Tresor ebenfalls.
     bert.sync_once().await.expect("bert gleicht weiter ab");

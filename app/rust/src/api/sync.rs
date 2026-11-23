@@ -84,20 +84,29 @@ pub fn sync_connection() -> Result<Option<SyncConnection>> {
     }))
 }
 
+/// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
+/// bedeutet; die muss der Nutzer ausdrücklich erlauben.
+#[frb(sync)]
+pub fn sync_is_unencrypted(server: String) -> bool {
+    tephra_sync::is_unencrypted(&server)
+}
+
 /// Legt für den offenen Tresor ein Konto auf dem Server an und lädt ihn hoch.
-/// Das Passwort muss das Master-Passwort des Tresors sein.
+/// Das Passwort muss das Master-Passwort des Tresors sein. `allow_http` lässt
+/// eine unverschlüsselte Adresse im eigenen Netz zu.
 pub async fn sync_register(
     server: String,
     username: String,
     password: String,
     device_name: String,
     invite: Option<String>,
+    allow_http: bool,
 ) -> Result<SyncSummary> {
     let sync = client()?;
     RUNTIME
         .spawn(async move {
             let invite = invite.as_deref().map(str::trim).filter(|code| !code.is_empty());
-            sync.register(&server, &username, &password, &device_name, invite).await?;
+            sync.register(&server, &username, &password, &device_name, invite, allow_http).await?;
             Ok(summary(sync.sync_once().await?))
         })
         .await?
@@ -111,13 +120,15 @@ pub async fn sync_join(
     username: String,
     password: String,
     device_name: String,
+    allow_http: bool,
 ) -> Result<()> {
     let path = PathBuf::from(path);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context("Der Datenordner lässt sich nicht anlegen")?;
     }
-    let core =
-        RUNTIME.spawn(async move { Sync::join(&path, &server, &username, &password, &device_name).await }).await??;
+    let core = RUNTIME
+        .spawn(async move { Sync::join(&path, &server, &username, &password, &device_name, allow_http).await })
+        .await??;
     app().core = Some(core);
     Ok(())
 }

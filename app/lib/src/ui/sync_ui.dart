@@ -6,6 +6,57 @@ import '../sync.dart';
 import '../text.dart';
 import 'common.dart';
 
+/// Was die App sagt, wenn eine unverschlüsselte Adresse eingegeben, aber nicht erlaubt wurde.
+String get plainHttpRefused => t(
+  'Die Adresse ist unverschlüsselt (http). Setze den Haken unter der Adresse, wenn der Server nur in deinem eigenen Netz erreichbar ist – oder verwende eine https-Adresse.',
+  'The address is unencrypted (http). Tick the box below the address if the server can only be reached in your own network – or use an https address.',
+);
+
+/// Haken, mit dem eine unverschlüsselte Serveradresse ausdrücklich erlaubt wird. Er erscheint nur, wenn die
+/// eingegebene Adresse eine ist.
+class PlainHttpConsent extends StatelessWidget {
+  const PlainHttpConsent({
+    super.key,
+    required this.server,
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final TextEditingController server;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: server,
+      builder: (context, _) {
+        if (!syncIsUnencrypted(server: server.text)) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: CheckboxListTile(
+            key: const Key('sync-allow-http'),
+            value: value,
+            onChanged: enabled ? (checked) => onChanged(checked ?? false) : null,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            dense: true,
+            title: Text(t('Unverschlüsselt verbinden', 'Connect without encryption')),
+            subtitle: Text(
+              t(
+                'Nur für einen Server im eigenen Netz. Wer in diesem Netz mitliest, kann sich am Server als dein Gerät anmelden. Der Inhalt des Tresors bleibt verschlüsselt.',
+                'Only for a server in your own network. Whoever listens in on that network can sign in to the server as your device. The content of the vault stays encrypted.',
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Lädt die Liste einer Seite neu, sobald der Abgleich Daten von anderen Geräten gebracht hat.
 mixin ReloadOnSync<T extends StatefulWidget> on State<T> {
   /// Liest die angezeigten Daten neu aus dem Tresor.
@@ -69,6 +120,7 @@ class _SyncDialogState extends State<SyncDialog> {
   final _username = TextEditingController();
   final _invite = TextEditingController();
   final _password = TextEditingController();
+  bool _allowHttp = false;
   bool _busy = false;
   String? _error;
   Future<List<SyncDevice>>? _devices;
@@ -116,6 +168,10 @@ class _SyncDialogState extends State<SyncDialog> {
       );
       return;
     }
+    if (syncIsUnencrypted(server: _server.text) && !_allowHttp) {
+      setState(() => _error = plainHttpRefused);
+      return;
+    }
     SyncSummary? summary;
     final ok = await _run(() async {
       summary = await syncState.register(
@@ -123,6 +179,7 @@ class _SyncDialogState extends State<SyncDialog> {
         username: _username.text,
         password: _password.text,
         invite: _invite.text.trim().isEmpty ? null : _invite.text.trim(),
+        allowHttp: _allowHttp,
       );
     });
     if (!ok || !mounted) return;
@@ -257,6 +314,12 @@ class _SyncDialogState extends State<SyncDialog> {
           hintText: 'https://sync.example.org',
         ),
       ),
+      PlainHttpConsent(
+        server: _server,
+        value: _allowHttp,
+        enabled: !_busy,
+        onChanged: (value) => setState(() => _allowHttp = value),
+      ),
       const SizedBox(height: 14),
       TextField(
         key: const Key('sync-username'),
@@ -309,6 +372,12 @@ class _SyncDialogState extends State<SyncDialog> {
       Text(connection.server, key: const Key('sync-connected'), style: theme.textTheme.titleMedium),
       const SizedBox(height: 2),
       Text(t('Angemeldet als ${connection.username}', 'Signed in as ${connection.username}'), style: muted),
+      if (syncIsUnencrypted(server: connection.server))
+        Text(
+          t('Unverschlüsselte Verbindung (http)', 'Unencrypted connection (http)'),
+          key: const Key('sync-unencrypted'),
+          style: muted,
+        ),
       const SizedBox(height: 12),
       if (syncState.error != null)
         Text(syncState.error!, style: TextStyle(color: theme.colorScheme.error))

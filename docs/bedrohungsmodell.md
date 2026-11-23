@@ -231,7 +231,10 @@ Hosts gefunden hat.
 - **Metadaten beim Sync-Server:** Größen in Stufen, Zeitpunkte, Löschmarker, Anzahl der Datensätze, Gerätenamen.
 - **Schwache Master-Passwörter.** Die Mindestlänge beträgt acht Zeichen; das ist eine Untergrenze, keine Empfehlung.
 - **Der Transport zum Sync-Server** ist das TLS, das dein Reverse-Proxy bereitstellt; der Client prüft das Zertifikat
-  gegen den Zertifikatsspeicher des Betriebssystems. Clients lehnen einfaches `http://` ab, außer für `localhost`.
-  Auch ohne TLS blieben die Inhalte des Tresors verschlüsselt, Sitzungstokens und Auth Key aber nicht.
+  gegen den Zertifikatsspeicher des Betriebssystems. Clients lehnen einfaches `http://` ab, außer für `localhost` –
+  und außer du erlaubst es für einen Server im eigenen Netz ausdrücklich (`--allow-http`, in der App „Unverschlüsselt
+  verbinden“). Ohne TLS bleiben die Inhalte des Tresors verschlüsselt, Sitzungstokens und Auth Key aber nicht: Wer
+  mitliest, kann sich als Gerät anmelden, die Chiffrate abholen und Master-Passwörter daran durchprobieren, Geräte
+  entfernen und das Konto löschen. Die Entscheidung ist deshalb nur für ein Netz gedacht, dem du vertraust.
 - **Seitenkanäle und forensische Spuren** in Arbeitsspeicher, Auslagerungsdatei oder Absturzabbildern des
   Betriebssystems.

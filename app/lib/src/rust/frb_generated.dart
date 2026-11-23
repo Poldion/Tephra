@@ -71,7 +71,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -2617413;
+  int get rustContentHash => 1661834649;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -204,12 +204,15 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSyncSyncDisconnect();
 
+  bool crateApiSyncSyncIsUnencrypted({required String server});
+
   Future<void> crateApiSyncSyncJoin({
     required String path,
     required String server,
     required String username,
     required String password,
     required String deviceName,
+    required bool allowHttp,
   });
 
   Future<void> crateApiSyncSyncReconnect({
@@ -223,6 +226,7 @@ abstract class RustLibApi extends BaseApi {
     required String password,
     required String deviceName,
     String? invite,
+    required bool allowHttp,
   });
 
   Future<void> crateApiSyncSyncRemoveDevice({required String deviceId});
@@ -1237,12 +1241,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "sync_disconnect", argNames: []);
 
   @override
+  bool crateApiSyncSyncIsUnencrypted({required String server}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(server, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 35)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSyncSyncIsUnencryptedConstMeta,
+        argValues: [server],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSyncSyncIsUnencryptedConstMeta =>
+      const TaskConstMeta(
+        debugName: "sync_is_unencrypted",
+        argNames: ["server"],
+      );
+
+  @override
   Future<void> crateApiSyncSyncJoin({
     required String path,
     required String server,
     required String username,
     required String password,
     required String deviceName,
+    required bool allowHttp,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1253,10 +1284,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(username, serializer);
           sse_encode_String(password, serializer);
           sse_encode_String(deviceName, serializer);
+          sse_encode_bool(allowHttp, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 35,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1265,7 +1297,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSyncSyncJoinConstMeta,
-        argValues: [path, server, username, password, deviceName],
+        argValues: [path, server, username, password, deviceName, allowHttp],
         apiImpl: this,
       ),
     );
@@ -1273,7 +1305,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSyncSyncJoinConstMeta => const TaskConstMeta(
     debugName: "sync_join",
-    argNames: ["path", "server", "username", "password", "deviceName"],
+    argNames: [
+      "path",
+      "server",
+      "username",
+      "password",
+      "deviceName",
+      "allowHttp",
+    ],
   );
 
   @override
@@ -1290,7 +1329,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 37,
             port: port_,
           );
         },
@@ -1317,6 +1356,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String password,
     required String deviceName,
     String? invite,
+    required bool allowHttp,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1327,10 +1367,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(password, serializer);
           sse_encode_String(deviceName, serializer);
           sse_encode_opt_String(invite, serializer);
+          sse_encode_bool(allowHttp, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 38,
             port: port_,
           );
         },
@@ -1339,7 +1380,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiSyncSyncRegisterConstMeta,
-        argValues: [server, username, password, deviceName, invite],
+        argValues: [server, username, password, deviceName, invite, allowHttp],
         apiImpl: this,
       ),
     );
@@ -1347,7 +1388,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiSyncSyncRegisterConstMeta => const TaskConstMeta(
     debugName: "sync_register",
-    argNames: ["server", "username", "password", "deviceName", "invite"],
+    argNames: [
+      "server",
+      "username",
+      "password",
+      "deviceName",
+      "invite",
+      "allowHttp",
+    ],
   );
 
   @override
@@ -1360,7 +1408,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 39,
             port: port_,
           );
         },
@@ -1388,7 +1436,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_list_prim_u_8_strict(certificates, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_32,
@@ -1412,7 +1460,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 41)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -1440,7 +1488,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 41,
+              funcId: 42,
               port: port_,
             );
           },
@@ -1470,7 +1518,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 42,
+            funcId: 43,
             port: port_,
           );
         },
@@ -1502,7 +1550,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1529,7 +1577,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(path, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 44)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 45)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,

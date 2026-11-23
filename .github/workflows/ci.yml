@@ -87,7 +87,7 @@ jobs:
           cargo build -p tephra-ssh --features testing --example test_server
           cargo build -p tephra-server -p tephra-cli
           ./target/debug/examples/test_server > "$RUNNER_TEMP/server.txt" &
-          ./target/debug/tephra-server --db "$RUNNER_TEMP/sync.sqlite" --bind 127.0.0.1:8790 --registration open &
+          ./target/debug/tephra-server --db "$RUNNER_TEMP/sync.sqlite" --bind 127.0.0.2:8790 --registration open &
           for attempt in $(seq 50); do grep -q '^port=' "$RUNNER_TEMP/server.txt" && break; sleep 0.2; done
           port="$(sed -n 's/^port=//p' "$RUNNER_TEMP/server.txt")"
           mkdir -p "$RUNNER_TEMP/shots"
@@ -95,10 +95,11 @@ jobs:
           TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
             flutter test integration_test/app_test.dart -d linux --reporter expanded \
             --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots" \
-            --dart-define=TEPHRA_TEST_SYNC=http://127.0.0.1:8790
+            --dart-define=TEPHRA_TEST_SYNC=http://127.0.0.2:8790
           cd ..
           export TEPHRA_VAULT="$RUNNER_TEMP/second/vault.tephra" TEPHRA_PASSWORD="ein langes Master-Passwort"
-          ./target/debug/tephra sync join http://127.0.0.1:8790 tester
+          if ./target/debug/tephra sync join http://127.0.0.2:8790 tester; then echo "plain http was accepted without --allow-http"; exit 1; fi
+          ./target/debug/tephra sync join --allow-http http://127.0.0.2:8790 tester
           ./target/debug/tephra host list | grep Testserver
       - uses: actions/upload-artifact@v7
         if: matrix.target == 'linux' && always()

@@ -206,7 +206,9 @@ The data folder is `%APPDATA%\Tephra\data` on Windows and `~/.local/share/tephra
 | `TEPHRA_SERVER_BEHIND_PROXY` | off | Set to `true` behind a reverse proxy that sets `X-Forwarded-For`: failed logins are then limited per address from that header |
 
 Every variable has an option of the same name (`--bind`, `--behind-proxy` …). The server speaks plain HTTP and belongs
-behind a reverse proxy with TLS. Clients refuse `http://` addresses other than `localhost`.
+behind a reverse proxy with TLS. Clients refuse `http://` addresses other than `localhost` unless you allow them
+explicitly for a server in your own network (`--allow-http`, in the app "Connect without encryption"); see the manual
+for what that gives up.
 
 ## MCP
 

@@ -338,7 +338,10 @@ certificate authority works once its root certificate is installed on the phone.
 
 Good to know:
 
-- **Addresses must be `https://`.** Plain `http://` is accepted only for `localhost`.
+- **Addresses start with `https://`.** Plain `http://` is accepted only for `localhost` – and for a server in your own
+  network if you allow it explicitly: with `--allow-http` for `tephra sync register` and `tephra sync join`, in the app
+  with the checkbox "Connect without encryption" that appears below such an address. The permission holds for this
+  connection until you disconnect it. What you give up is described under "Running the sync server".
 - **Conflicts.** If two devices change the same entry, the changes are merged field by field; for the same field the
   later change wins. A deletion wins over a concurrent change.
 - **Not synced:** keys marked `--local-only`, MCP clients, grants and the audit log, and the sync session itself.
@@ -601,6 +604,14 @@ Clients refuse `http://` addresses other than `localhost` and check the certific
 the operating system. Requests to `/v1/events` stay open for up to 55 seconds, so the proxy must not cut connections
 off earlier. `GET /healthz` answers `ok`.
 
+**In your own network without TLS.** If the server can only be reached in your own network – at home or through a
+VPN – it can run without a proxy: with `--bind 0.0.0.0:8787` and without `--behind-proxy`. Clients then connect to
+`http://<address>:8787` and need your explicit permission for that (`--allow-http`, in the app the checkbox "Connect
+without encryption"). The content of the vault stays encrypted even so. Whoever listens in on that network does see
+the login proof and the session tokens, though. With them they can sign in to the server as one of your devices, fetch
+the encrypted records and try master passwords against them, remove devices and delete the account on the server.
+Across the internet there always has to be TLS in front.
+
 **Behind a proxy, set `--behind-proxy`.** Failed logins are limited per user name and sender: 10 within 5 minutes.
 Without the option, every request seems to come from the proxy, and one person guessing passwords would slow down
 everybody. With it, the sender is the last address in `X-Forwarded-For` – the one your proxy added. Do not set it if
@@ -638,6 +649,9 @@ with `--build` it builds the image from the source instead.
 The database lives in the volume `sync-data`. The server runs as an unprivileged user in a read-only container, with
 `TEPHRA_SERVER_BEHIND_PROXY` set because Caddy is in front of it.
 `docker compose exec sync tephra-server accounts` lists the accounts.
+
+For a server in your own network only, without TLS (see above), drop the service `caddy`. The service `sync` then gets
+`ports: ["8787:8787"]` instead of `expose`, and the line `TEPHRA_SERVER_BEHIND_PROXY` is removed.
 
 ### With systemd
 

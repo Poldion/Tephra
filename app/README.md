@@ -76,6 +76,7 @@ The debug build is large (about 200 MB); the emulator needs enough free storage 
 
 With `--dart-define=TEPHRA_TEST_SYNC=<address>` the test also creates an account on a sync server and uploads the
 vault; a second run with an empty vault path and `--dart-define=TEPHRA_TEST_JOIN=<address>` plays the second device
-and fetches it. Start the server with `tephra-server --bind 127.0.0.1:8790 --registration open --db <file>`. Plain
-`http://` is accepted for the own machine only, so on the emulator forward the port first
-(`adb reverse tcp:8790 tcp:8790`) and use `http://127.0.0.1:8790`.
+and fetches it. Start the server with `tephra-server --bind 127.0.0.1:8790 --registration open --db <file>`. On the
+emulator forward the port first (`adb reverse tcp:8790 tcp:8790`) and use `http://127.0.0.1:8790`. With an unencrypted
+address that is not the own machine – bind the server to `127.0.0.2:8790` and use `http://127.0.0.2:8790` – the test
+also checks that the app accepts it only after "Connect without encryption" was ticked.

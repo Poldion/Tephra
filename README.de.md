@@ -212,7 +212,9 @@ Der Datenordner ist unter Windows `%APPDATA%\Tephra\data`, unter Linux `~/.local
 | `TEPHRA_SERVER_BEHIND_PROXY` | aus | Auf `true` setzen hinter einem Reverse-Proxy, der `X-Forwarded-For` setzt: Fehlversuche bei der Anmeldung werden dann nach der Adresse aus diesem Kopf begrenzt |
 
 Zu jeder Variable gibt es eine gleichnamige Option (`--bind`, `--behind-proxy` …). Der Server spricht einfaches HTTP
-und gehört hinter einen Reverse-Proxy mit TLS. Clients lehnen `http://`-Adressen ab, außer für `localhost`.
+und gehört hinter einen Reverse-Proxy mit TLS. Clients lehnen `http://`-Adressen ab, außer für `localhost` – es sei
+denn, du erlaubst sie für einen Server im eigenen Netz ausdrücklich (`--allow-http`, in der App „Unverschlüsselt
+verbinden“); was du damit aufgibst, steht im Handbuch.
 
 ## MCP
 

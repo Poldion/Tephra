@@ -34,7 +34,9 @@ pub enum SyncError {
     AlreadyConnected,
     #[error("Die Sitzung ist abgelaufen oder das Gerät wurde entfernt; bitte neu anmelden")]
     SessionExpired,
-    #[error("Unverschlüsselte Verbindungen sind nur zum eigenen Rechner erlaubt – bitte eine https-Adresse verwenden")]
+    #[error(
+        "Diese Adresse ist unverschlüsselt (http). Verwende eine https-Adresse – oder erlaube die unverschlüsselte Verbindung ausdrücklich, wenn der Server nur in deinem eigenen Netz erreichbar ist"
+    )]
     InsecureUrl,
     #[error("Ungültige Serveradresse: {0}")]
     InvalidUrl(String),
@@ -101,14 +103,23 @@ pub struct Sync {
     refreshing: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
-fn normalize_url(server: &str) -> Result<String> {
+/// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
+/// bedeutet. Der eigene Rechner zählt nicht: Was ihn nicht verlässt, kann
+/// unterwegs niemand mitlesen.
+pub fn is_unencrypted(server: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(server.trim()) else { return false };
+    let local = matches!(url.host_str().unwrap_or_default(), "localhost" | "127.0.0.1" | "[::1]");
+    url.scheme() == "http" && !local
+}
+
+/// Prüft die Adresse des Servers. Unverschlüsselt zu einem anderen Rechner
+/// geht es nur mit `allow_http`, also wenn der Nutzer es ausdrücklich will.
+fn normalize_url(server: &str, allow_http: bool) -> Result<String> {
     let server = server.trim().trim_end_matches('/');
     let url = reqwest::Url::parse(server).map_err(|e| SyncError::InvalidUrl(e.to_string()))?;
-    let host = url.host_str().unwrap_or_default();
-    let local = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
     match url.scheme() {
         "https" => Ok(server.to_string()),
-        "http" if local => Ok(server.to_string()),
+        "http" if allow_http || !is_unencrypted(server) => Ok(server.to_string()),
         "http" => Err(SyncError::InsecureUrl),
         other => Err(SyncError::InvalidUrl(format!("Schema „{other}“ wird nicht unterstützt"))),
     }
@@ -211,7 +222,8 @@ impl Sync {
     }
 
     /// Legt auf dem Server ein Konto für den bestehenden Tresor an und
-    /// verbindet dieses Gerät damit.
+    /// verbindet dieses Gerät damit. `allow_http` lässt auch eine
+    /// unverschlüsselte Adresse zu, die nicht der eigene Rechner ist.
     pub async fn register(
         &self,
         server: &str,
@@ -219,11 +231,12 @@ impl Sync {
         password: &str,
         device_name: &str,
         invite: Option<&str>,
+        allow_http: bool,
     ) -> Result<()> {
         if self.stored()?.is_some() {
             return Err(SyncError::AlreadyConnected);
         }
-        let server = normalize_url(server)?;
+        let server = normalize_url(server, allow_http)?;
         let header = self.core.with_vault(|v| Ok(v.header().clone()))?;
         // Das Passwort muss wirklich das des Tresors sein: Sonst entstünde ein
         // Konto, an dem sich kein weiteres Gerät je anmelden könnte.
@@ -254,12 +267,19 @@ impl Sync {
 
     /// Richtet ein weiteres Gerät ein: meldet sich am Server an, legt unter
     /// `path` einen leeren Tresor mit dem Schlüssel des Kontos an und holt
-    /// alle Daten ab.
-    pub async fn join(path: &Path, server: &str, username: &str, password: &str, device_name: &str) -> Result<Core> {
+    /// alle Daten ab. `allow_http` wie bei [`Sync::register`].
+    pub async fn join(
+        path: &Path,
+        server: &str,
+        username: &str,
+        password: &str,
+        device_name: &str,
+        allow_http: bool,
+    ) -> Result<Core> {
         if path.exists() {
             return Err(VaultError::AlreadyExists.into());
         }
-        let server = normalize_url(server)?;
+        let server = normalize_url(server, allow_http)?;
         let http = http_client();
         let username = username.trim().to_string();
         let prelogin: PreloginResponse = parse(

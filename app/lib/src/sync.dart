@@ -144,6 +144,7 @@ class SyncController extends ChangeNotifier {
     required String username,
     required String password,
     String? invite,
+    bool allowHttp = false,
   }) async {
     await _ready();
     final summary = await syncRegister(
@@ -152,13 +153,19 @@ class SyncController extends ChangeNotifier {
       password: password,
       deviceName: await deviceName(),
       invite: invite,
+      allowHttp: allowHttp,
     );
     start();
     return summary;
   }
 
   /// Holt den Tresor eines bestehenden Kontos auf dieses Gerät. Danach ist er entsperrt.
-  Future<void> join({required String server, required String username, required String password}) async {
+  Future<void> join({
+    required String server,
+    required String username,
+    required String password,
+    bool allowHttp = false,
+  }) async {
     await _ready();
     await syncJoin(
       path: vaultPath,
@@ -166,6 +173,7 @@ class SyncController extends ChangeNotifier {
       username: username.trim(),
       password: password,
       deviceName: await deviceName(),
+      allowHttp: allowHttp,
     );
   }
 

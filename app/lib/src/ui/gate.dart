@@ -3,10 +3,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../paths.dart';
 import '../rust/api/app.dart';
+import '../rust/api/sync.dart' show syncIsUnencrypted;
 import '../sync.dart';
 import '../text.dart';
 import 'common.dart';
 import 'logo.dart';
+import 'sync_ui.dart';
 
 /// Anmeldung: Tresor anlegen, von einem Sync-Server abholen oder entsperren.
 class GateScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class _GateScreenState extends State<GateScreen> {
 
   /// Statt einen neuen Tresor anzulegen: den eines bestehenden Kontos vom Sync-Server abholen.
   bool _joining = false;
+  bool _allowHttp = false;
   bool _busy = false;
   String? _error;
 
@@ -64,12 +67,21 @@ class _GateScreenState extends State<GateScreen> {
       );
       return;
     }
+    if (syncIsUnencrypted(server: _server.text) && !_allowHttp) {
+      setState(() => _error = plainHttpRefused);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await syncState.join(server: _server.text, username: _username.text, password: _password.text);
+      await syncState.join(
+        server: _server.text,
+        username: _username.text,
+        password: _password.text,
+        allowHttp: _allowHttp,
+      );
       _password.clear();
       widget.onUnlocked();
     } catch (error) {
@@ -247,6 +259,12 @@ class _GateScreenState extends State<GateScreen> {
           labelText: t('Serveradresse', 'Server address'),
           hintText: 'https://sync.example.org',
         ),
+      ),
+      PlainHttpConsent(
+        server: _server,
+        value: _allowHttp,
+        enabled: !_busy,
+        onChanged: (value) => setState(() => _allowHttp = value),
       ),
       const SizedBox(height: 14),
       TextField(

@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] – 2026-11-24
+
+### Added
+
+- **Sync with a server in your own network without TLS:** an `http://` address that is not the own machine is now
+  accepted if you allow it explicitly – in the app with the checkbox "Connect without encryption" that appears below
+  such an address, on the command line with `--allow-http` for `tephra sync register` and `tephra sync join`. Without
+  that permission nothing changes: such an address is refused before anything is sent. The content of the vault stays
+  encrypted; the login proof and the session tokens are readable for whoever listens in on that network, so this is
+  meant for a server that can only be reached at home or through a VPN. The app shows "Unencrypted connection" for
+  such a connection. The manual describes how to run the server without a proxy.
+
+### Security
+
+- The library `url` is updated to 2.5.9, which fixes RUSTSEC-2026-0592 (a crash on deeply nested `blob:` addresses).
+
 ## [0.3.1] – 2026-11-19
 
 ### Fixed

@@ -1,6 +1,6 @@
 ; Installer for Windows (Inno Setup 6). Built by the release workflow:
 ;
-;   iscc /DAppVersion=0.3.1 /DSourceDir=<folder with the programs> /DOutputDir=<folder> packaging\windows\tephra.iss
+;   iscc /DAppVersion=0.4.0 /DSourceDir=<folder with the programs> /DOutputDir=<folder> packaging\windows\tephra.iss
 ;
 ; Installs for the current user without administrator rights: the app, the command line `tephra.exe`
 ; and the sync server `tephra-server.exe`.

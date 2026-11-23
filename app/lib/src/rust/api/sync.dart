@@ -20,20 +20,28 @@ int syncTrustRoots({required List<Uint8List> certificates}) =>
 SyncConnection? syncConnection() =>
     RustLib.instance.api.crateApiSyncSyncConnection();
 
+/// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
+/// bedeutet; die muss der Nutzer ausdrücklich erlauben.
+bool syncIsUnencrypted({required String server}) =>
+    RustLib.instance.api.crateApiSyncSyncIsUnencrypted(server: server);
+
 /// Legt für den offenen Tresor ein Konto auf dem Server an und lädt ihn hoch.
-/// Das Passwort muss das Master-Passwort des Tresors sein.
+/// Das Passwort muss das Master-Passwort des Tresors sein. `allow_http` lässt
+/// eine unverschlüsselte Adresse im eigenen Netz zu.
 Future<SyncSummary> syncRegister({
   required String server,
   required String username,
   required String password,
   required String deviceName,
   String? invite,
+  required bool allowHttp,
 }) => RustLib.instance.api.crateApiSyncSyncRegister(
   server: server,
   username: username,
   password: password,
   deviceName: deviceName,
   invite: invite,
+  allowHttp: allowHttp,
 );
 
 /// Richtet dieses Gerät für ein bestehendes Konto ein: legt unter `path` den
@@ -44,12 +52,14 @@ Future<void> syncJoin({
   required String username,
   required String password,
   required String deviceName,
+  required bool allowHttp,
 }) => RustLib.instance.api.crateApiSyncSyncJoin(
   path: path,
   server: server,
   username: username,
   password: password,
   deviceName: deviceName,
+  allowHttp: allowHttp,
 );
 
 /// Meldet dieses Gerät neu an, wenn seine Sitzung abgelaufen ist oder das

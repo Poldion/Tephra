@@ -11,7 +11,9 @@
 // Mit `--dart-define=TEPHRA_TEST_SYNC=<Adresse>` legt er am Ende ein Konto „tester“ auf einem
 // Sync-Server an (`tephra-server --registration open`) und lädt den Tresor hoch. Ein zweiter Lauf
 // mit leerem Tresorpfad und `--dart-define=TEPHRA_TEST_JOIN=<Adresse>` spielt das zweite Gerät:
-// Er holt den Tresor dieses Kontos ab und prüft, dass der Host angekommen ist.
+// Er holt den Tresor dieses Kontos ab und prüft, dass der Host angekommen ist. Ist die Adresse
+// unverschlüsselt und nicht der eigene Rechner (etwa `http://127.0.0.2:8790`), prüft der Test
+// zusätzlich, dass die App sie erst mit dem Haken „Unverschlüsselt verbinden“ annimmt.
 //
 // Auf einem Android-Emulator erreicht die App den Testserver des Rechners
 // unter 10.0.2.2; der Tresor liegt im Datenordner der App und muss fehlen
@@ -37,10 +39,12 @@ import 'package:tephra/main.dart';
 import 'package:tephra/src/paths.dart';
 import 'package:tephra/src/rust/api/app.dart';
 import 'package:tephra/src/rust/api/files.dart';
+import 'package:tephra/src/rust/api/sync.dart' show syncIsUnencrypted;
 import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
 import 'package:tephra/src/settings.dart';
 import 'package:tephra/src/text.dart';
+import 'package:tephra/src/ui/sync_ui.dart' show plainHttpRefused;
 import 'package:tephra/src/ui/terminal_page.dart';
 import 'package:tephra/src/update.dart';
 import 'package:xterm/xterm.dart' show TerminalView;
@@ -101,12 +105,27 @@ void _step(String name) => debugPrint('Abschnitt: $name');
 
 String _screen(TerminalSession session) => session.terminal.buffer.getText();
 
-/// Öffnet den Dialog des Abgleichs und wartet, bis er einen abgeschlossenen Abgleich meldet.
-Future<void> _syncDone(WidgetTester tester) async {
+/// Wartet im Dialog des Abgleichs, bis er einen abgeschlossenen Abgleich mit `server` meldet.
+Future<void> _syncDone(WidgetTester tester, String server) async {
   await _appears(tester, find.byKey(const Key('sync-connected')));
   await _appears(tester, find.byKey(const Key('sync-done')));
   await _appears(tester, find.text(t('Dieses Gerät', 'This device')));
   expect(find.byKey(const Key('sync-error')), findsNothing);
+  expect(find.byKey(const Key('sync-unencrypted')), syncIsUnencrypted(server: server) ? findsOneWidget : findsNothing);
+}
+
+/// Eine unverschlüsselte Adresse nimmt die App erst an, wenn der Haken dafür gesetzt ist; für eine
+/// verschlüsselte oder den eigenen Rechner erscheint er gar nicht.
+Future<void> _allowPlainHttp(WidgetTester tester, String server, Key submit) async {
+  final consent = find.byKey(const Key('sync-allow-http'));
+  if (!syncIsUnencrypted(server: server)) {
+    expect(consent, findsNothing);
+    return;
+  }
+  await _appears(tester, consent);
+  await _tap(tester, find.byKey(submit));
+  await _appears(tester, find.text(plainHttpRefused));
+  await _tap(tester, consent);
 }
 
 /// Das zweite Gerät: holt den Tresor eines bestehenden Kontos ab.
@@ -116,6 +135,8 @@ Future<void> _joinDevice(WidgetTester tester) async {
   await _type(tester, find.byKey(const Key('join-server')), _join);
   await _type(tester, find.byKey(const Key('join-username')), _account);
   await _type(tester, find.byKey(const Key('join-password')), 'falsches Passwort');
+  await _allowPlainHttp(tester, _join, const Key('join-submit'));
+  expect(vaultExists(path: vaultPath), isFalse);
   await _tap(tester, find.byKey(const Key('join-submit')));
   await _until(
     tester,
@@ -133,7 +154,7 @@ Future<void> _joinDevice(WidgetTester tester) async {
 
   _step('Abgleich auf dem zweiten Gerät');
   await _tap(tester, find.byKey(const Key('sync-button')));
-  await _syncDone(tester);
+  await _syncDone(tester, _join);
   expect(find.byIcon(Icons.devices_other_rounded), findsWidgets, reason: 'das erste Gerät steht in der Liste');
   await _tap(tester, find.text(t('Schließen', 'Close')));
 
@@ -389,12 +410,13 @@ void main() {
       await _type(tester, find.byKey(const Key('sync-server')), _sync);
       await _type(tester, find.byKey(const Key('sync-username')), _account);
       await _type(tester, find.byKey(const Key('sync-password')), 'falsches Passwort');
+      await _allowPlainHttp(tester, _sync, const Key('sync-register'));
       await _tap(tester, find.byKey(const Key('sync-register')));
       await _appears(tester, find.byKey(const Key('sync-error')));
       expect(find.byKey(const Key('sync-connected')), findsNothing);
       await _type(tester, find.byKey(const Key('sync-password')), _password);
       await _tap(tester, find.byKey(const Key('sync-register')));
-      await _syncDone(tester);
+      await _syncDone(tester, _sync);
       await _tap(tester, find.text(t('Schließen', 'Close')));
     }
 
