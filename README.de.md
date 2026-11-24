@@ -44,7 +44,7 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 
 **Noch nicht vorhanden:**
 
-- In der App fehlen noch MCP-Freigaben, Snippets, Portweiterleitungen, das Übertragen ganzer Ordner, das Ändern des
+- In der App fehlen noch Snippets, Portweiterleitungen, das Übertragen ganzer Ordner, das Ändern des
   Master-Passworts, die Wiederherstellung mit dem Wiederherstellungsschlüssel und das automatische Sperren; dafür gibt
   es die Kommandozeile, die unter Windows und Linux denselben Tresor verwendet. Unter Linux wird die App bisher nur
   vom automatischen App-Test geprüft; an einem echten Desktop hat noch niemand damit gearbeitet. Die Android-Fassung
@@ -167,6 +167,7 @@ beim ersten Start jedes weiteren. Sie gleicht ab, solange der Tresor offen ist.
 tephra mcp add-client desktop                            # zeigt das Token ein einziges Mal
 tephra mcp grant desktop web --level read-only
 tephra daemon                                            # entsperrt den Tresor und wartet auf MCP-Clients
+                                                         # (oder in der App im Bereich „MCP“ den Dienst einschalten)
 ```
 
 In der MCP-Konfiguration deines Clients:
@@ -193,6 +194,7 @@ Alle Befehle mit Beispielen: [Handbuch](docs/handbuch.md).
 |---|---|---|
 | `TEPHRA_VAULT` | `vault.tephra` im Datenordner des Benutzers | Pfad der Tresordatei (wie `--vault`) |
 | `TEPHRA_PASSWORD` | – | Master-Passwort statt Eingabe (für Skripte) |
+| `TEPHRA_PASSWORD_FILE` | – | Datei mit dem Master-Passwort, etwa für `tephra daemon` unter systemd |
 | `TEPHRA_NEW_PASSWORD` | – | Neues Master-Passwort für `tephra init`, `tephra passwd` und `tephra recover` |
 | `TEPHRA_IDENTITY_PASSWORD` | – | Passwort, das `tephra identity add` speichert |
 | `TEPHRA_KEY_PASSPHRASE` | – | Passphrase des Schlüssels für `tephra key import` |

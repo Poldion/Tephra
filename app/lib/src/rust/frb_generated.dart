@@ -5,6 +5,7 @@
 
 import 'api/app.dart';
 import 'api/files.dart';
+import 'api/mcp.dart';
 import 'api/sync.dart';
 
 import 'dart:async';
@@ -71,7 +72,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1661834649;
+  int get rustContentHash => 705970687;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -174,6 +175,47 @@ abstract class RustLibApi extends BaseApi {
   List<VpnView> crateApiAppListVpnProfiles();
 
   Future<void> crateApiAppLockVault();
+
+  String crateApiMcpMcpAddClient({required String name});
+
+  bool crateApiMcpMcpAnswer({required int id, required McpAnswer answer});
+
+  List<McpAuditEntry> crateApiMcpMcpAudit({required int limit});
+
+  bool crateApiMcpMcpEnabled();
+
+  void crateApiMcpMcpGrant({
+    required String clientId,
+    required String hostId,
+    required McpLevel level,
+    required List<String> allow,
+    required List<String> deny,
+    required bool filesRead,
+    required bool filesWrite,
+  });
+
+  McpOverview crateApiMcpMcpOverview();
+
+  void crateApiMcpMcpRemoveClient({required String clientId});
+
+  void crateApiMcpMcpRequestAttention();
+
+  void crateApiMcpMcpRevoke({required String clientId, required String hostId});
+
+  bool crateApiMcpMcpServiceRunning();
+
+  Stream<McpEvent> crateApiMcpMcpServiceStart({required String vaultPath});
+
+  void crateApiMcpMcpServiceStop();
+
+  void crateApiMcpMcpSetClientDisabled({
+    required String clientId,
+    required bool disabled,
+  });
+
+  void crateApiMcpMcpSetEnabled({required bool enabled});
+
+  bool crateApiMcpMcpSupported();
 
   Stream<SessionEvent> crateApiAppOpenSession({
     required String hostId,
@@ -980,6 +1022,405 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "lock_vault", argNames: []);
 
   @override
+  String crateApiMcpMcpAddClient({required String name}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(name, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpAddClientConstMeta,
+        argValues: [name],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpAddClientConstMeta =>
+      const TaskConstMeta(debugName: "mcp_add_client", argNames: ["name"]);
+
+  @override
+  bool crateApiMcpMcpAnswer({required int id, required McpAnswer answer}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(id, serializer);
+          sse_encode_mcp_answer(answer, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMcpMcpAnswerConstMeta,
+        argValues: [id, answer],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpAnswerConstMeta =>
+      const TaskConstMeta(debugName: "mcp_answer", argNames: ["id", "answer"]);
+
+  @override
+  List<McpAuditEntry> crateApiMcpMcpAudit({required int limit}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(limit, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_mcp_audit_entry,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpAuditConstMeta,
+        argValues: [limit],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpAuditConstMeta =>
+      const TaskConstMeta(debugName: "mcp_audit", argNames: ["limit"]);
+
+  @override
+  bool crateApiMcpMcpEnabled() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpEnabledConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpEnabledConstMeta =>
+      const TaskConstMeta(debugName: "mcp_enabled", argNames: []);
+
+  @override
+  void crateApiMcpMcpGrant({
+    required String clientId,
+    required String hostId,
+    required McpLevel level,
+    required List<String> allow,
+    required List<String> deny,
+    required bool filesRead,
+    required bool filesWrite,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(clientId, serializer);
+          sse_encode_String(hostId, serializer);
+          sse_encode_mcp_level(level, serializer);
+          sse_encode_list_String(allow, serializer);
+          sse_encode_list_String(deny, serializer);
+          sse_encode_bool(filesRead, serializer);
+          sse_encode_bool(filesWrite, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpGrantConstMeta,
+        argValues: [
+          clientId,
+          hostId,
+          level,
+          allow,
+          deny,
+          filesRead,
+          filesWrite,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpGrantConstMeta => const TaskConstMeta(
+    debugName: "mcp_grant",
+    argNames: [
+      "clientId",
+      "hostId",
+      "level",
+      "allow",
+      "deny",
+      "filesRead",
+      "filesWrite",
+    ],
+  );
+
+  @override
+  McpOverview crateApiMcpMcpOverview() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_mcp_overview,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpOverviewConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpOverviewConstMeta =>
+      const TaskConstMeta(debugName: "mcp_overview", argNames: []);
+
+  @override
+  void crateApiMcpMcpRemoveClient({required String clientId}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(clientId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpRemoveClientConstMeta,
+        argValues: [clientId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpRemoveClientConstMeta => const TaskConstMeta(
+    debugName: "mcp_remove_client",
+    argNames: ["clientId"],
+  );
+
+  @override
+  void crateApiMcpMcpRequestAttention() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMcpMcpRequestAttentionConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpRequestAttentionConstMeta =>
+      const TaskConstMeta(debugName: "mcp_request_attention", argNames: []);
+
+  @override
+  void crateApiMcpMcpRevoke({
+    required String clientId,
+    required String hostId,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(clientId, serializer);
+          sse_encode_String(hostId, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 34)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpRevokeConstMeta,
+        argValues: [clientId, hostId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpRevokeConstMeta => const TaskConstMeta(
+    debugName: "mcp_revoke",
+    argNames: ["clientId", "hostId"],
+  );
+
+  @override
+  bool crateApiMcpMcpServiceRunning() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 35)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMcpMcpServiceRunningConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpServiceRunningConstMeta =>
+      const TaskConstMeta(debugName: "mcp_service_running", argNames: []);
+
+  @override
+  Stream<McpEvent> crateApiMcpMcpServiceStart({required String vaultPath}) {
+    final sink = RustStreamSink<McpEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_String(vaultPath, serializer);
+            sse_encode_StreamSink_mcp_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 36,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_AnyhowException,
+          ),
+          constMeta: kCrateApiMcpMcpServiceStartConstMeta,
+          argValues: [vaultPath, sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpServiceStartConstMeta => const TaskConstMeta(
+    debugName: "mcp_service_start",
+    argNames: ["vaultPath", "sink"],
+  );
+
+  @override
+  void crateApiMcpMcpServiceStop() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 37)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMcpMcpServiceStopConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpServiceStopConstMeta =>
+      const TaskConstMeta(debugName: "mcp_service_stop", argNames: []);
+
+  @override
+  void crateApiMcpMcpSetClientDisabled({
+    required String clientId,
+    required bool disabled,
+  }) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(clientId, serializer);
+          sse_encode_bool(disabled, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 38)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpSetClientDisabledConstMeta,
+        argValues: [clientId, disabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpSetClientDisabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "mcp_set_client_disabled",
+        argNames: ["clientId", "disabled"],
+      );
+
+  @override
+  void crateApiMcpMcpSetEnabled({required bool enabled}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_bool(enabled, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 39)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMcpMcpSetEnabledConstMeta,
+        argValues: [enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpSetEnabledConstMeta =>
+      const TaskConstMeta(debugName: "mcp_set_enabled", argNames: ["enabled"]);
+
+  @override
+  bool crateApiMcpMcpSupported() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMcpMcpSupportedConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMcpMcpSupportedConstMeta =>
+      const TaskConstMeta(debugName: "mcp_supported", argNames: []);
+
+  @override
   Stream<SessionEvent> crateApiAppOpenSession({
     required String hostId,
     required int cols,
@@ -998,7 +1439,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 26,
+              funcId: 41,
               port: port_,
             );
           },
@@ -1027,7 +1468,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_box_autoadd_host_input(input, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 42)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1050,7 +1491,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_box_autoadd_identity_input(input, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 43)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -1076,7 +1517,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 44,
             port: port_,
           );
         },
@@ -1110,7 +1551,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 30,
+            funcId: 45,
             port: port_,
           );
         },
@@ -1144,7 +1585,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 31,
+            funcId: 46,
             port: port_,
           );
         },
@@ -1170,7 +1611,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 32)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 47)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_box_autoadd_sync_connection,
@@ -1195,7 +1636,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 33,
+            funcId: 48,
             port: port_,
           );
         },
@@ -1222,7 +1663,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 34,
+            funcId: 49,
             port: port_,
           );
         },
@@ -1247,7 +1688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(server, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 35)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 50)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -1288,7 +1729,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 36,
+            funcId: 51,
             port: port_,
           );
         },
@@ -1329,7 +1770,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 37,
+            funcId: 52,
             port: port_,
           );
         },
@@ -1371,7 +1812,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 38,
+            funcId: 53,
             port: port_,
           );
         },
@@ -1408,7 +1849,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 39,
+            funcId: 54,
             port: port_,
           );
         },
@@ -1436,7 +1877,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_list_list_prim_u_8_strict(certificates, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 40)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 55)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_32,
@@ -1460,7 +1901,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 41)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 56)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -1488,7 +1929,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 42,
+              funcId: 57,
               port: port_,
             );
           },
@@ -1518,7 +1959,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 43,
+            funcId: 58,
             port: port_,
           );
         },
@@ -1550,7 +1991,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 44,
+            funcId: 59,
             port: port_,
           );
         },
@@ -1577,7 +2018,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(path, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 45)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 60)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
@@ -1597,6 +2038,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<McpEvent> dco_decode_StreamSink_mcp_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
   }
 
   @protected
@@ -1649,6 +2096,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   IdentityInput dco_decode_box_autoadd_identity_input(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_identity_input(raw);
+  }
+
+  @protected
+  McpRequest dco_decode_box_autoadd_mcp_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_mcp_request(raw);
   }
 
   @protected
@@ -1730,6 +2183,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       notes: dco_decode_String(arr[9]),
       favorite: dco_decode_bool(arr[10]),
     );
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -1821,6 +2280,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<McpAuditEntry> dco_decode_list_mcp_audit_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_mcp_audit_entry).toList();
+  }
+
+  @protected
+  List<McpClient> dco_decode_list_mcp_client(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_mcp_client).toList();
+  }
+
+  @protected
+  List<McpGrant> dco_decode_list_mcp_grant(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_mcp_grant).toList();
+  }
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as List<int>;
@@ -1848,6 +2325,133 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<VpnView> dco_decode_list_vpn_view(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_vpn_view).toList();
+  }
+
+  @protected
+  McpAnswer dco_decode_mcp_answer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return McpAnswer.values[raw as int];
+  }
+
+  @protected
+  McpAuditEntry dco_decode_mcp_audit_entry(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return McpAuditEntry(
+      timeMs: dco_decode_i_64(arr[0]),
+      client: dco_decode_String(arr[1]),
+      host: dco_decode_String(arr[2]),
+      tool: dco_decode_String(arr[3]),
+      detail: dco_decode_String(arr[4]),
+      outcome: dco_decode_mcp_outcome(arr[5]),
+      exitStatus: dco_decode_opt_box_autoadd_u_32(arr[6]),
+      note: dco_decode_String(arr[7]),
+    );
+  }
+
+  @protected
+  McpClient dco_decode_mcp_client(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return McpClient(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      disabled: dco_decode_bool(arr[2]),
+      createdMs: dco_decode_i_64(arr[3]),
+      grants: dco_decode_list_mcp_grant(arr[4]),
+    );
+  }
+
+  @protected
+  McpEvent dco_decode_mcp_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return McpEvent_Started();
+      case 1:
+        return McpEvent_Request(
+          request: dco_decode_box_autoadd_mcp_request(raw[1]),
+        );
+      case 2:
+        return McpEvent_Withdrawn(id: dco_decode_u_32(raw[1]));
+      case 3:
+        return McpEvent_Connected(client: dco_decode_String(raw[1]));
+      case 4:
+        return McpEvent_Disconnected(client: dco_decode_String(raw[1]));
+      case 5:
+        return McpEvent_Stopped(message: dco_decode_opt_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  McpGrant dco_decode_mcp_grant(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return McpGrant(
+      hostId: dco_decode_String(arr[0]),
+      hostLabel: dco_decode_String(arr[1]),
+      level: dco_decode_mcp_level(arr[2]),
+      allow: dco_decode_list_String(arr[3]),
+      deny: dco_decode_list_String(arr[4]),
+      filesRead: dco_decode_bool(arr[5]),
+      filesWrite: dco_decode_bool(arr[6]),
+    );
+  }
+
+  @protected
+  McpLevel dco_decode_mcp_level(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return McpLevel.values[raw as int];
+  }
+
+  @protected
+  McpOutcome dco_decode_mcp_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return McpOutcome.values[raw as int];
+  }
+
+  @protected
+  McpOverview dco_decode_mcp_overview(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return McpOverview(
+      enabled: dco_decode_bool(arr[0]),
+      clients: dco_decode_list_mcp_client(arr[1]),
+    );
+  }
+
+  @protected
+  McpRequest dco_decode_mcp_request(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return McpRequest(
+      id: dco_decode_u_32(arr[0]),
+      client: dco_decode_String(arr[1]),
+      host: dco_decode_String(arr[2]),
+      kind: dco_decode_mcp_request_kind(arr[3]),
+      subject: dco_decode_String(arr[4]),
+      extra: dco_decode_opt_String(arr[5]),
+      bytes: dco_decode_opt_box_autoadd_u_32(arr[6]),
+      checksum: dco_decode_opt_String(arr[7]),
+    );
+  }
+
+  @protected
+  McpRequestKind dco_decode_mcp_request_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return McpRequestKind.values[raw as int];
   }
 
   @protected
@@ -2075,6 +2679,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RustStreamSink<McpEvent> sse_decode_StreamSink_mcp_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   RustStreamSink<SessionEvent> sse_decode_StreamSink_session_event_Sse(
     SseDeserializer deserializer,
   ) {
@@ -2129,6 +2741,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_identity_input(deserializer));
+  }
+
+  @protected
+  McpRequest sse_decode_box_autoadd_mcp_request(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_mcp_request(deserializer));
   }
 
   @protected
@@ -2232,6 +2850,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       notes: var_notes,
       favorite: var_favorite,
     );
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
   }
 
   @protected
@@ -2370,6 +2994,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<McpAuditEntry> sse_decode_list_mcp_audit_entry(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <McpAuditEntry>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_mcp_audit_entry(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<McpClient> sse_decode_list_mcp_client(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <McpClient>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_mcp_client(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<McpGrant> sse_decode_list_mcp_grant(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <McpGrant>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_mcp_grant(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -2417,6 +3079,154 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_vpn_view(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  McpAnswer sse_decode_mcp_answer(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return McpAnswer.values[inner];
+  }
+
+  @protected
+  McpAuditEntry sse_decode_mcp_audit_entry(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_timeMs = sse_decode_i_64(deserializer);
+    var var_client = sse_decode_String(deserializer);
+    var var_host = sse_decode_String(deserializer);
+    var var_tool = sse_decode_String(deserializer);
+    var var_detail = sse_decode_String(deserializer);
+    var var_outcome = sse_decode_mcp_outcome(deserializer);
+    var var_exitStatus = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_note = sse_decode_String(deserializer);
+    return McpAuditEntry(
+      timeMs: var_timeMs,
+      client: var_client,
+      host: var_host,
+      tool: var_tool,
+      detail: var_detail,
+      outcome: var_outcome,
+      exitStatus: var_exitStatus,
+      note: var_note,
+    );
+  }
+
+  @protected
+  McpClient sse_decode_mcp_client(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_disabled = sse_decode_bool(deserializer);
+    var var_createdMs = sse_decode_i_64(deserializer);
+    var var_grants = sse_decode_list_mcp_grant(deserializer);
+    return McpClient(
+      id: var_id,
+      name: var_name,
+      disabled: var_disabled,
+      createdMs: var_createdMs,
+      grants: var_grants,
+    );
+  }
+
+  @protected
+  McpEvent sse_decode_mcp_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return McpEvent_Started();
+      case 1:
+        var var_request = sse_decode_box_autoadd_mcp_request(deserializer);
+        return McpEvent_Request(request: var_request);
+      case 2:
+        var var_id = sse_decode_u_32(deserializer);
+        return McpEvent_Withdrawn(id: var_id);
+      case 3:
+        var var_client = sse_decode_String(deserializer);
+        return McpEvent_Connected(client: var_client);
+      case 4:
+        var var_client = sse_decode_String(deserializer);
+        return McpEvent_Disconnected(client: var_client);
+      case 5:
+        var var_message = sse_decode_opt_String(deserializer);
+        return McpEvent_Stopped(message: var_message);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  McpGrant sse_decode_mcp_grant(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_hostId = sse_decode_String(deserializer);
+    var var_hostLabel = sse_decode_String(deserializer);
+    var var_level = sse_decode_mcp_level(deserializer);
+    var var_allow = sse_decode_list_String(deserializer);
+    var var_deny = sse_decode_list_String(deserializer);
+    var var_filesRead = sse_decode_bool(deserializer);
+    var var_filesWrite = sse_decode_bool(deserializer);
+    return McpGrant(
+      hostId: var_hostId,
+      hostLabel: var_hostLabel,
+      level: var_level,
+      allow: var_allow,
+      deny: var_deny,
+      filesRead: var_filesRead,
+      filesWrite: var_filesWrite,
+    );
+  }
+
+  @protected
+  McpLevel sse_decode_mcp_level(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return McpLevel.values[inner];
+  }
+
+  @protected
+  McpOutcome sse_decode_mcp_outcome(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return McpOutcome.values[inner];
+  }
+
+  @protected
+  McpOverview sse_decode_mcp_overview(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_enabled = sse_decode_bool(deserializer);
+    var var_clients = sse_decode_list_mcp_client(deserializer);
+    return McpOverview(enabled: var_enabled, clients: var_clients);
+  }
+
+  @protected
+  McpRequest sse_decode_mcp_request(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_u_32(deserializer);
+    var var_client = sse_decode_String(deserializer);
+    var var_host = sse_decode_String(deserializer);
+    var var_kind = sse_decode_mcp_request_kind(deserializer);
+    var var_subject = sse_decode_String(deserializer);
+    var var_extra = sse_decode_opt_String(deserializer);
+    var var_bytes = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_checksum = sse_decode_opt_String(deserializer);
+    return McpRequest(
+      id: var_id,
+      client: var_client,
+      host: var_host,
+      kind: var_kind,
+      subject: var_subject,
+      extra: var_extra,
+      bytes: var_bytes,
+      checksum: var_checksum,
+    );
+  }
+
+  @protected
+  McpRequestKind sse_decode_mcp_request_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return McpRequestKind.values[inner];
   }
 
   @protected
@@ -2690,18 +3500,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
-  }
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_mcp_event_Sse(
+    RustStreamSink<McpEvent> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_mcp_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
@@ -2795,6 +3616,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_mcp_request(
+    McpRequest self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_mcp_request(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_sync_connection(
     SyncConnection self,
     SseSerializer serializer,
@@ -2864,6 +3694,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_String(self.tags, serializer);
     sse_encode_String(self.notes, serializer);
     sse_encode_bool(self.favorite, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
   }
 
   @protected
@@ -2970,6 +3806,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_mcp_audit_entry(
+    List<McpAuditEntry> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_mcp_audit_entry(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_mcp_client(
+    List<McpClient> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_mcp_client(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_mcp_grant(
+    List<McpGrant> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_mcp_grant(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_loose(
     List<int> self,
     SseSerializer serializer,
@@ -3022,6 +3894,115 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     for (final item in self) {
       sse_encode_vpn_view(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_mcp_answer(McpAnswer self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_audit_entry(
+    McpAuditEntry self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.timeMs, serializer);
+    sse_encode_String(self.client, serializer);
+    sse_encode_String(self.host, serializer);
+    sse_encode_String(self.tool, serializer);
+    sse_encode_String(self.detail, serializer);
+    sse_encode_mcp_outcome(self.outcome, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.exitStatus, serializer);
+    sse_encode_String(self.note, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_client(McpClient self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_bool(self.disabled, serializer);
+    sse_encode_i_64(self.createdMs, serializer);
+    sse_encode_list_mcp_grant(self.grants, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_event(McpEvent self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case McpEvent_Started():
+        sse_encode_i_32(0, serializer);
+      case McpEvent_Request(request: final request):
+        sse_encode_i_32(1, serializer);
+        sse_encode_box_autoadd_mcp_request(request, serializer);
+      case McpEvent_Withdrawn(id: final id):
+        sse_encode_i_32(2, serializer);
+        sse_encode_u_32(id, serializer);
+      case McpEvent_Connected(client: final client):
+        sse_encode_i_32(3, serializer);
+        sse_encode_String(client, serializer);
+      case McpEvent_Disconnected(client: final client):
+        sse_encode_i_32(4, serializer);
+        sse_encode_String(client, serializer);
+      case McpEvent_Stopped(message: final message):
+        sse_encode_i_32(5, serializer);
+        sse_encode_opt_String(message, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_mcp_grant(McpGrant self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.hostId, serializer);
+    sse_encode_String(self.hostLabel, serializer);
+    sse_encode_mcp_level(self.level, serializer);
+    sse_encode_list_String(self.allow, serializer);
+    sse_encode_list_String(self.deny, serializer);
+    sse_encode_bool(self.filesRead, serializer);
+    sse_encode_bool(self.filesWrite, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_level(McpLevel self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_outcome(McpOutcome self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_overview(McpOverview self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.enabled, serializer);
+    sse_encode_list_mcp_client(self.clients, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_request(McpRequest self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.id, serializer);
+    sse_encode_String(self.client, serializer);
+    sse_encode_String(self.host, serializer);
+    sse_encode_mcp_request_kind(self.kind, serializer);
+    sse_encode_String(self.subject, serializer);
+    sse_encode_opt_String(self.extra, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.bytes, serializer);
+    sse_encode_opt_String(self.checksum, serializer);
+  }
+
+  @protected
+  void sse_encode_mcp_request_kind(
+    McpRequestKind self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
   }
 
   @protected
@@ -3258,11 +4239,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_String(self.addresses, serializer);
     sse_encode_list_String(self.endpoints, serializer);
     sse_encode_list_String(self.dns, serializer);
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
   }
 }

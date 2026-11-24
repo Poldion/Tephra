@@ -1,0 +1,36 @@
+# systemd user unit: runs "tephra daemon" for one user on a Linux server – MCP clients of that user
+# connect to it with "tephra mcp serve", and it keeps the vault in sync if the device is connected to
+# a sync server. It starts at boot, without anyone logging in.
+#
+# The master password comes from a file that only this user may read; the daemon refuses the file
+# otherwise. Whoever can read it – that user and root – can open the vault.
+#
+#   mkdir -p ~/.config/tephra ~/.config/systemd/user
+#   (umask 077; read -rs -p "Master password: " pw && printf '%s' "$pw" > ~/.config/tephra/master-password)
+#   install -m 0644 deploy/tephra-daemon.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now tephra-daemon
+#   sudo loginctl enable-linger "$USER"
+#
+# Log: journalctl --user -u tephra-daemon
+#
+# Without a terminal nobody can be asked: requests for confirmation are refused and noted in the log,
+# so only hosts shared as "read-only" or "auto" can be used.
+
+[Unit]
+Description=Tephra service for MCP clients and sync
+Documentation=https://github.com/Poldion/Tephra/blob/main/docs/manual.md
+
+[Service]
+Type=simple
+# /usr/bin/tephra comes with the Debian package; with the command line from the tarball use its path.
+ExecStart=/usr/bin/tephra daemon
+Environment=TEPHRA_PASSWORD_FILE=%h/.config/tephra/master-password
+StandardInput=null
+UMask=0077
+NoNewPrivileges=yes
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

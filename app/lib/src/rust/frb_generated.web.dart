@@ -8,6 +8,7 @@
 
 import 'api/app.dart';
 import 'api/files.dart';
+import 'api/mcp.dart';
 import 'api/sync.dart';
 
 import 'dart:async';
@@ -27,6 +28,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  RustStreamSink<McpEvent> dco_decode_StreamSink_mcp_event_Sse(dynamic raw);
 
   @protected
   RustStreamSink<SessionEvent> dco_decode_StreamSink_session_event_Sse(
@@ -57,6 +61,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   IdentityInput dco_decode_box_autoadd_identity_input(dynamic raw);
 
   @protected
+  McpRequest dco_decode_box_autoadd_mcp_request(dynamic raw);
+
+  @protected
   SyncConnection dco_decode_box_autoadd_sync_connection(dynamic raw);
 
   @protected
@@ -76,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   HostView dco_decode_host_view(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
@@ -108,6 +118,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<McpAuditEntry> dco_decode_list_mcp_audit_entry(dynamic raw);
+
+  @protected
+  List<McpClient> dco_decode_list_mcp_client(dynamic raw);
+
+  @protected
+  List<McpGrant> dco_decode_list_mcp_grant(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -121,6 +140,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<VpnView> dco_decode_list_vpn_view(dynamic raw);
+
+  @protected
+  McpAnswer dco_decode_mcp_answer(dynamic raw);
+
+  @protected
+  McpAuditEntry dco_decode_mcp_audit_entry(dynamic raw);
+
+  @protected
+  McpClient dco_decode_mcp_client(dynamic raw);
+
+  @protected
+  McpEvent dco_decode_mcp_event(dynamic raw);
+
+  @protected
+  McpGrant dco_decode_mcp_grant(dynamic raw);
+
+  @protected
+  McpLevel dco_decode_mcp_level(dynamic raw);
+
+  @protected
+  McpOutcome dco_decode_mcp_outcome(dynamic raw);
+
+  @protected
+  McpOverview dco_decode_mcp_overview(dynamic raw);
+
+  @protected
+  McpRequest dco_decode_mcp_request(dynamic raw);
+
+  @protected
+  McpRequestKind dco_decode_mcp_request_kind(dynamic raw);
 
   @protected
   String? dco_decode_opt_String(dynamic raw);
@@ -183,6 +232,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
+  RustStreamSink<McpEvent> sse_decode_StreamSink_mcp_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   RustStreamSink<SessionEvent> sse_decode_StreamSink_session_event_Sse(
     SseDeserializer deserializer,
   );
@@ -215,6 +269,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  McpRequest sse_decode_box_autoadd_mcp_request(SseDeserializer deserializer);
+
+  @protected
   SyncConnection sse_decode_box_autoadd_sync_connection(
     SseDeserializer deserializer,
   );
@@ -236,6 +293,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   HostView sse_decode_host_view(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
@@ -272,6 +332,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<McpAuditEntry> sse_decode_list_mcp_audit_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<McpClient> sse_decode_list_mcp_client(SseDeserializer deserializer);
+
+  @protected
+  List<McpGrant> sse_decode_list_mcp_grant(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -285,6 +356,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<VpnView> sse_decode_list_vpn_view(SseDeserializer deserializer);
+
+  @protected
+  McpAnswer sse_decode_mcp_answer(SseDeserializer deserializer);
+
+  @protected
+  McpAuditEntry sse_decode_mcp_audit_entry(SseDeserializer deserializer);
+
+  @protected
+  McpClient sse_decode_mcp_client(SseDeserializer deserializer);
+
+  @protected
+  McpEvent sse_decode_mcp_event(SseDeserializer deserializer);
+
+  @protected
+  McpGrant sse_decode_mcp_grant(SseDeserializer deserializer);
+
+  @protected
+  McpLevel sse_decode_mcp_level(SseDeserializer deserializer);
+
+  @protected
+  McpOutcome sse_decode_mcp_outcome(SseDeserializer deserializer);
+
+  @protected
+  McpOverview sse_decode_mcp_overview(SseDeserializer deserializer);
+
+  @protected
+  McpRequest sse_decode_mcp_request(SseDeserializer deserializer);
+
+  @protected
+  McpRequestKind sse_decode_mcp_request_kind(SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -346,11 +447,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   VpnView sse_decode_vpn_view(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
-
-  @protected
   void sse_encode_AnyhowException(
     AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_mcp_event_Sse(
+    RustStreamSink<McpEvent> self,
     SseSerializer serializer,
   );
 
@@ -397,6 +501,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_mcp_request(
+    McpRequest self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_sync_connection(
     SyncConnection self,
     SseSerializer serializer,
@@ -422,6 +532,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_host_view(HostView self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
@@ -463,6 +576,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_mcp_audit_entry(
+    List<McpAuditEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_mcp_client(
+    List<McpClient> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_mcp_grant(List<McpGrant> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -485,6 +613,39 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_vpn_view(List<VpnView> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_answer(McpAnswer self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_audit_entry(McpAuditEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_client(McpClient self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_event(McpEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_grant(McpGrant self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_level(McpLevel self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_outcome(McpOutcome self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_overview(McpOverview self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_request(McpRequest self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_request_kind(
+    McpRequestKind self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
@@ -551,9 +712,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_vpn_view(VpnView self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
 }
 
 // Section: wire_class

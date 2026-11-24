@@ -95,12 +95,39 @@ jobs:
           TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra" xvfb-run -a -s "-screen 0 1280x800x24" \
             flutter test integration_test/app_test.dart -d linux --reporter expanded \
             --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots" \
-            --dart-define=TEPHRA_TEST_SYNC=http://127.0.0.2:8790
+            --dart-define=TEPHRA_TEST_SYNC=http://127.0.0.2:8790 \
+            --dart-define=TEPHRA_TEST_CLI="$GITHUB_WORKSPACE/target/debug/tephra"
           cd ..
           export TEPHRA_VAULT="$RUNNER_TEMP/second/vault.tephra" TEPHRA_PASSWORD="ein langes Master-Passwort"
           if ./target/debug/tephra sync join http://127.0.0.2:8790 tester; then echo "plain http was accepted without --allow-http"; exit 1; fi
           ./target/debug/tephra sync join --allow-http http://127.0.0.2:8790 tester
           ./target/debug/tephra host list | grep Testserver
+      # tephra daemon as on a server: without a terminal, with the password from a file, ended by SIGTERM.
+      - name: Service without a terminal
+        if: matrix.target == 'linux'
+        working-directory: ${{ github.workspace }}
+        timeout-minutes: 5
+        run: |
+          export TEPHRA_VAULT="$RUNNER_TEMP/vault/vault.tephra"
+          token="$(TEPHRA_PASSWORD='ein langes Master-Passwort' ./target/debug/tephra mcp add-client ci | grep -o 'tephramcp_[0-9a-f]*')"
+          secret="$RUNNER_TEMP/master-password"
+          printf '%s' 'ein langes Master-Passwort' > "$secret"
+          chmod 644 "$secret"
+          if TEPHRA_PASSWORD_FILE="$secret" ./target/debug/tephra daemon < /dev/null; then
+            echo "a password file readable by others was accepted"; exit 1
+          fi
+          chmod 600 "$secret"
+          TEPHRA_PASSWORD_FILE="$secret" ./target/debug/tephra daemon < /dev/null 2> "$RUNNER_TEMP/daemon.log" &
+          daemon=$!
+          for attempt in $(seq 50); do grep -q 'Dienst läuft' "$RUNNER_TEMP/daemon.log" && break; sleep 0.2; done
+          request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+          reply="$({ printf '%s\n' "$request"; sleep 3; } | TEPHRA_MCP_TOKEN="$token" timeout 20 ./target/debug/tephra mcp serve)"
+          echo "$reply" | grep -q '"serverInfo"'
+          kill -TERM "$daemon"
+          wait "$daemon"
+          cat "$RUNNER_TEMP/daemon.log"
+          grep -q 'Kein Terminal' "$RUNNER_TEMP/daemon.log"
+          grep -q 'MCP-Client „ci“ getrennt' "$RUNNER_TEMP/daemon.log"
       - uses: actions/upload-artifact@v7
         if: matrix.target == 'linux' && always()
         with:

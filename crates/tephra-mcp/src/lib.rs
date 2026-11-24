@@ -8,15 +8,17 @@
 //! * [`Approver`] – Rückfrage beim Nutzer für alles, was Bestätigung braucht
 //! * [`McpServer`] – die Werkzeuge selbst
 //! * [`audit`] – Protokoll jedes Aufrufs
+//! * [`service`] – der lokale Kanal, über den sich Clients verbinden
 
 pub mod audit;
 pub mod policy;
 pub mod readonly;
 mod server;
+pub mod service;
 mod util;
 
 pub use server::{Action, ApprovalAnswer, ApprovalRequest, Approver, DenyAll, McpServer};
-pub use util::{Redactor, strip_ansi};
+pub use util::{Redactor, printable, printable_lines, strip_ansi};
 
 #[cfg(test)]
 mod tests;

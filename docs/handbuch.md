@@ -415,6 +415,9 @@ tephra daemon
 Er fragt nach dem Master-Passwort, hält den Tresor entsperrt und wartet. Rückfragen erscheinen hier. Beendet wird er
 mit Strg+C; das sperrt den Tresor und schließt alle Verbindungen und Tunnel.
 
+Statt `tephra daemon` kann auch die App den Dienst stellen (siehe „In der App“). Für denselben Tresor läuft immer nur
+einer von beiden; der zweite meldet beim Start, dass der Dienst schon läuft.
+
 **4. Den Server im MCP-Client eintragen.** Der Client muss den Befehl `tephra mcp serve` mit der Umgebungsvariable
 `TEPHRA_MCP_TOKEN` starten. Im verbreiteten JSON-Format:
 
@@ -530,8 +533,51 @@ denselben Eingabedaten oder dieselbe Datei mit demselben Inhalt. Alles andere, o
 lehnt ab. Was du getippt hast, bevor die Frage zu sehen war, zählt nicht. Dieselbe Frage erscheint, bevor einem
 unbekannten Hostschlüssel vertraut wird; ein geänderter Hostschlüssel wird für MCP immer abgelehnt.
 
-Der Dienst braucht ein Terminal, um zu fragen. Läuft er ohne, wird jede Rückfrage abgelehnt – nutzbar sind dann nur
-Hosts mit `read-only` und `auto`.
+Der Dienst braucht ein Terminal, um zu fragen. Läuft er ohne, wird jede Rückfrage abgelehnt und im Protokoll des
+Dienstes vermerkt – nutzbar sind dann nur Hosts mit `read-only` und `auto`.
+
+### In der App
+
+Unter Windows und Linux hat die App einen eigenen Bereich „MCP“. Dort schaltest du den Dienst ein; er läuft dann,
+solange der Tresor offen ist, und startet nach dem Entsperren wieder von selbst – auch nach dem nächsten Start der App.
+`tephra daemon` brauchst du dafür nicht.
+
+- **Rückfragen** erscheinen als Dialog über der App, gleich welcher Bereich gerade offen ist. Was im grauen Feld steht,
+  stammt vom Modell; Steuer- und unsichtbare Zeichen sind dort sichtbar gemacht wie im Terminal. „Einmal erlauben“
+  und „Genau dies für diese Verbindung“ lassen sich erst nach einem kurzen Augenblick drücken, damit ein Klick, der
+  schon unterwegs war, nicht als Antwort zählt; „Ablehnen“ geht sofort. Ohne Antwort binnen zwei Minuten wird
+  abgelehnt. Unter Windows blinkt die App in der Taskleiste, solange eine Frage wartet und das Fenster im Hintergrund
+  ist.
+- **Clients** legst du dort an. Das Token erscheint einmal, zusammen mit dem fertigen Eintrag für die Konfiguration
+  des Clients.
+- **Freigaben** gibst du je Client und Host, mit Zugriffsstufe, eigenen Mustern und Dateizugriff – wie mit
+  `tephra mcp grant`. Ein Client lässt sich sperren, ohne seine Freigaben zu verlieren.
+- **Not-Aus** und **Protokoll** gibt es dort ebenfalls.
+
+Der Bereich und der Dienst ändern dieselben Freigaben wie `tephra mcp`; was du an einer Stelle änderst, gilt an der
+anderen.
+
+### Auf einem Linux-Server ohne Anmeldung
+
+[`deploy/tephra-daemon.service`](../deploy/tephra-daemon.service) startet `tephra daemon` als Dienst des Benutzers,
+schon beim Hochfahren und ohne dass sich jemand anmeldet. MCP-Clients desselben Benutzers verbinden sich wie gewohnt mit
+`tephra mcp serve`, und der Tresor wird abgeglichen, wenn das Gerät mit einem Sync-Server verbunden ist.
+
+```bash
+mkdir -p ~/.config/tephra ~/.config/systemd/user
+(umask 077; read -rs -p "Master-Passwort: " pw && printf '%s' "$pw" > ~/.config/tephra/master-password)
+install -m 0644 deploy/tephra-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tephra-daemon
+sudo loginctl enable-linger "$USER"
+```
+
+Das Master-Passwort liest der Dienst aus der Datei, die `TEPHRA_PASSWORD_FILE` nennt. Sie darf nur für den Benutzer
+lesbar sein; sonst lehnt `tephra` sie ab. Wer sie lesen kann – dieser Benutzer und root –, kann den Tresor öffnen. Gib
+diesem Tresor deshalb nur die Hosts und Schlüssel, die der Server wirklich braucht. Rückfragen sind ohne Terminal nicht
+möglich: Nutzbar sind Hosts mit `read-only` und `auto`, abgelehnte Anfragen stehen im Protokoll
+(`journalctl --user -u tephra-daemon`). `systemctl --user stop tephra-daemon` beendet den Dienst sauber und sperrt den
+Tresor.
 
 ### Was das Modell bekommt
 
@@ -700,6 +746,7 @@ ergänzt du `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
 |---|---|---|
 | `TEPHRA_VAULT` | allen Befehlen | Pfad der Tresordatei |
 | `TEPHRA_PASSWORD` | allen Befehlen, die entsperren | Master-Passwort statt Abfrage |
+| `TEPHRA_PASSWORD_FILE` | allen Befehlen, die entsperren | Datei mit dem Master-Passwort, etwa für `tephra daemon` unter systemd; unter Linux nur für den Benutzer lesbar |
 | `TEPHRA_NEW_PASSWORD` | `tephra init`, `tephra passwd`, `tephra recover` | Neues Master-Passwort statt Abfrage |
 | `TEPHRA_IDENTITY_PASSWORD` | `tephra identity add` | Zu speicherndes Passwort statt Abfrage |
 | `TEPHRA_KEY_PASSPHRASE` | `tephra key import` | Passphrase des Schlüssels statt Abfrage |

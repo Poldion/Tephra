@@ -16,6 +16,10 @@ class AppSettings extends ChangeNotifier {
   bool get checkUpdates => _checkUpdates;
   bool _checkUpdates = true;
 
+  /// Ob die App den MCP-Dienst für Sprachmodelle anbietet, solange der Tresor offen ist.
+  bool get mcpService => _mcpService;
+  bool _mcpService = false;
+
   /// Wann zuletzt nach einer neuen Fassung gesucht wurde.
   DateTime? get lastUpdateCheck => _lastUpdateCheck;
   DateTime? _lastUpdateCheck;
@@ -29,6 +33,7 @@ class AppSettings extends ChangeNotifier {
       if (data is! Map) return;
       _themeMode = ThemeMode.values.asNameMap()[data['theme']] ?? _themeMode;
       if (data['checkUpdates'] is bool) _checkUpdates = data['checkUpdates'] as bool;
+      if (data['mcpService'] is bool) _mcpService = data['mcpService'] as bool;
       if (data['lastUpdateCheck'] is String) _lastUpdateCheck = DateTime.tryParse(data['lastUpdateCheck'] as String);
     } catch (_) {
       // Keine oder unlesbare Datei: Vorgaben behalten.
@@ -42,6 +47,7 @@ class AppSettings extends ChangeNotifier {
         jsonEncode({
           'theme': _themeMode.name,
           'checkUpdates': _checkUpdates,
+          'mcpService': _mcpService,
           'lastUpdateCheck': ?_lastUpdateCheck?.toUtc().toIso8601String(),
         }),
       );
@@ -60,6 +66,13 @@ class AppSettings extends ChangeNotifier {
   void setCheckUpdates(bool value) {
     if (value == _checkUpdates) return;
     _checkUpdates = value;
+    notifyListeners();
+    _save();
+  }
+
+  void setMcpService(bool value) {
+    if (value == _mcpService) return;
+    _mcpService = value;
     notifyListeners();
     _save();
   }

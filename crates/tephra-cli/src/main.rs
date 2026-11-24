@@ -21,7 +21,7 @@ use tephra_sync::Sync;
 #[command(
     name = "tephra",
     version,
-    after_help = "Umgebungsvariablen für Skripte (in der Prozessliste und im Verlauf sichtbar – nur verwenden, wo das vertretbar ist):\n  TEPHRA_PASSWORD           Master-Passwort, statt es einzutippen\n  TEPHRA_NEW_PASSWORD       neues Master-Passwort für init, passwd und recover\n  TEPHRA_IDENTITY_PASSWORD  Passwort für „tephra identity add“\n  TEPHRA_KEY_PASSPHRASE     Passphrase für „tephra key import“"
+    after_help = "Umgebungsvariablen für Skripte (in der Prozessliste und im Verlauf sichtbar – nur verwenden, wo das vertretbar ist):\n  TEPHRA_PASSWORD           Master-Passwort, statt es einzutippen\n  TEPHRA_PASSWORD_FILE      Datei mit dem Master-Passwort (nur für den Benutzer lesbar), etwa für tephra daemon unter systemd\n  TEPHRA_NEW_PASSWORD       neues Master-Passwort für init, passwd und recover\n  TEPHRA_IDENTITY_PASSWORD  Passwort für „tephra identity add“\n  TEPHRA_KEY_PASSPHRASE     Passphrase für „tephra key import“"
 )]
 struct Cli {
     /// Pfad der Tresordatei. Vorgabe: der Datenordner des Benutzers
@@ -334,12 +334,42 @@ fn default_vault() -> PathBuf {
     data_dir().map(|dir| dir.join("vault.tephra")).unwrap_or_else(|| PathBuf::from("vault.tephra"))
 }
 
-/// Master-Passwort: aus `TEPHRA_PASSWORD` (für Skripte) oder vom Terminal.
+/// Master-Passwort: aus `TEPHRA_PASSWORD` (für Skripte), aus der Datei in
+/// `TEPHRA_PASSWORD_FILE` (für Dienste) oder vom Terminal.
 async fn password(prompt: &str) -> Fallible<String> {
     if let Ok(value) = std::env::var("TEPHRA_PASSWORD") {
         return Ok(value);
     }
+    if let Some(file) = std::env::var_os("TEPHRA_PASSWORD_FILE") {
+        return password_from_file(Path::new(&file));
+    }
     ui::read_password(format!("{prompt}: ")).await.ok_or_else(|| "Keine Eingabe".to_string())
+}
+
+/// Liest das Master-Passwort aus einer Datei. Unter Linux muss sie dem
+/// Benutzer allein gehören: Ist sie für andere lesbar, wird sie abgelehnt,
+/// statt das Passwort stillschweigend preiszugeben.
+fn password_from_file(file: &Path) -> Fallible<String> {
+    let unreadable = |e: std::io::Error| format!("Passwortdatei {} lässt sich nicht lesen: {e}", file.display());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(file).map_err(unreadable)?.permissions().mode();
+        if mode & 0o077 != 0 {
+            return Err(format!(
+                "Die Passwortdatei {} ist auch für andere lesbar (Rechte {:o}). Bitte mit „chmod 600“ einschränken.",
+                file.display(),
+                mode & 0o777
+            ));
+        }
+    }
+    let text = std::fs::read_to_string(file).map_err(unreadable)?;
+    // Ein Zeilenende am Schluss gehört nicht zum Passwort; alles andere schon.
+    let password = text.strip_suffix('\n').map(|rest| rest.strip_suffix('\r').unwrap_or(rest)).unwrap_or(&text);
+    if password.is_empty() {
+        return Err(format!("Die Passwortdatei {} ist leer.", file.display()));
+    }
+    Ok(password.to_string())
 }
 
 async fn new_password() -> Fallible<String> {

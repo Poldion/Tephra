@@ -106,6 +106,7 @@ pub async fn lock_vault() -> Result<()> {
             task.abort();
         }
         app.files.clear();
+        crate::api::mcp::mcp_service_stop();
         app.core.clone()
     };
     if let Some(core) = core {

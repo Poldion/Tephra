@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'src/mcp.dart';
 import 'src/paths.dart';
 import 'src/rust/api/app.dart';
 import 'src/rust/frb_generated.dart';
@@ -9,6 +10,7 @@ import 'src/sync.dart';
 import 'src/text.dart';
 import 'src/ui/gate.dart';
 import 'src/ui/home.dart';
+import 'src/ui/mcp_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,17 +71,22 @@ class _RootState extends State<Root> {
   @override
   void initState() {
     super.initState();
-    if (_unlocked) syncState.start();
+    if (_unlocked) {
+      syncState.start();
+      mcpState.start();
+    }
   }
 
   void _onUnlocked() {
     syncState.start();
+    mcpState.start();
     setState(() => _unlocked = true);
   }
 
   Future<void> _lock() async {
     _state.closeAll();
     syncState.stop();
+    mcpState.stop();
     try {
       await lockVault();
     } finally {
@@ -99,6 +106,8 @@ class _RootState extends State<Root> {
     if (!_unlocked) {
       return GateScreen(onUnlocked: _onUnlocked);
     }
-    return HomeScreen(state: _state, onLock: _lock);
+    return McpApprovals(
+      child: HomeScreen(state: _state, onLock: _lock),
+    );
   }
 }

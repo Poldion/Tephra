@@ -15,6 +15,10 @@
 // unverschlüsselt und nicht der eigene Rechner (etwa `http://127.0.0.2:8790`), prüft der Test
 // zusätzlich, dass die App sie erst mit dem Haken „Unverschlüsselt verbinden“ annimmt.
 //
+// Mit `--dart-define=TEPHRA_TEST_CLI=<Pfad zu tephra>` schaltet er außerdem den MCP-Dienst der App ein,
+// legt einen Client an, gibt ihm den Host frei und startet die echte Brücke `tephra mcp serve`:
+// Ein Befehl wird im Dialog der App bestätigt, ein zweiter abgelehnt.
+//
 // Auf einem Android-Emulator erreicht die App den Testserver des Rechners
 // unter 10.0.2.2; der Tresor liegt im Datenordner der App und muss fehlen
 // (App vorher deinstallieren):
@@ -25,6 +29,7 @@
 // `TEPHRA_TEST_SHOTS=app` legt die Bildschirmfotos dort im Ordner `shots` neben dem
 // Tresor ab.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -36,9 +41,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:tephra/main.dart';
+import 'package:tephra/src/mcp.dart';
 import 'package:tephra/src/paths.dart';
 import 'package:tephra/src/rust/api/app.dart';
 import 'package:tephra/src/rust/api/files.dart';
+import 'package:tephra/src/rust/api/mcp.dart';
 import 'package:tephra/src/rust/api/sync.dart' show syncIsUnencrypted;
 import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
@@ -57,6 +64,7 @@ const _shots = String.fromEnvironment('TEPHRA_TEST_SHOTS');
 const _update = bool.fromEnvironment('TEPHRA_TEST_UPDATE');
 const _sync = String.fromEnvironment('TEPHRA_TEST_SYNC');
 const _join = String.fromEnvironment('TEPHRA_TEST_JOIN');
+const _cli = String.fromEnvironment('TEPHRA_TEST_CLI');
 const _account = 'tester';
 const _password = 'ein langes Master-Passwort';
 
@@ -164,6 +172,141 @@ Future<void> _joinDevice(WidgetTester tester) async {
   await _type(tester, find.byType(TextField).first, _password);
   await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
   await _appears(tester, find.text('Testserver'));
+}
+
+/// Die Brücke `tephra mcp serve`, wie ein MCP-Client sie startet: JSON-RPC zeilenweise über Ein- und Ausgabe.
+class _Bridge {
+  _Bridge._(this._process) {
+    _process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      final message = jsonDecode(line) as Map<String, dynamic>;
+      _answers.remove(message['id'])?.complete(message);
+    });
+    _process.stderr.transform(utf8.decoder).listen((text) => debugPrint('Brücke: ${text.trim()}'));
+  }
+
+  static Future<_Bridge> start(String token) async => _Bridge._(
+    await Process.start(_cli, ['mcp', 'serve'], environment: {'TEPHRA_MCP_TOKEN': token, 'TEPHRA_VAULT': vaultPath}),
+  );
+
+  final Process _process;
+  final _answers = <int, Completer<Map<String, dynamic>>>{};
+  var _next = 0;
+
+  void _send(Map<String, dynamic> message) => _process.stdin.writeln(jsonEncode({'jsonrpc': '2.0', ...message}));
+
+  Future<Map<String, dynamic>> call(String method, [Map<String, dynamic>? params]) {
+    final id = ++_next;
+    final answer = _answers[id] = Completer();
+    _send({'id': id, 'method': method, 'params': ?params});
+    return answer.future;
+  }
+
+  Future<void> initialize() async {
+    final reply = await call('initialize', {
+      'protocolVersion': '2025-06-18',
+      'capabilities': <String, dynamic>{},
+      'clientInfo': {'name': 'app-test', 'version': '1'},
+    });
+    expect(reply['result'], isNotNull, reason: '$reply');
+    _send({'method': 'notifications/initialized'});
+  }
+
+  /// Ruft ein Werkzeug auf; zurück kommen sein Text und ob es ein Fehler war.
+  Future<(String, bool)> tool(String name, Map<String, dynamic> arguments) async {
+    final reply = await call('tools/call', {'name': name, 'arguments': arguments});
+    final result = reply['result'] as Map<String, dynamic>? ?? {};
+    final text = [for (final part in result['content'] as List? ?? const []) (part as Map)['text'] ?? ''].join();
+    return (text, result['isError'] == true || reply['error'] != null);
+  }
+
+  Future<int> close() async {
+    await _process.stdin.close();
+    return _process.exitCode.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        _process.kill();
+        return -1;
+      },
+    );
+  }
+}
+
+/// Wartet, bis der Befehl einer Rückfrage im Dialog steht, und beantwortet sie mit dem Knopf `answer`.
+Future<void> _answerApproval(WidgetTester tester, String command, Key answer) async {
+  await _appears(tester, find.byKey(const Key('mcp-approval')));
+  expect(tester.widget<SelectableText>(find.byKey(const Key('mcp-approval-subject'))).data, command);
+  await _until(tester, () => tester.widget<ButtonStyleButton>(find.byKey(answer)).onPressed != null, 'Antwortknopf');
+  await _tap(tester, find.byKey(answer));
+  await _until(tester, () => find.byKey(const Key('mcp-approval')).evaluate().isEmpty, 'Dialog geschlossen');
+}
+
+/// Der MCP-Dienst der App mit der echten Brücke der Kommandozeile.
+Future<void> _mcp(WidgetTester tester) async {
+  _step('MCP');
+  await _tap(tester, find.text('MCP').first);
+  await _appears(tester, find.byKey(const Key('mcp-service')));
+  await _tap(tester, find.byKey(const Key('mcp-service')));
+  await _until(tester, () => mcpState.running, 'Dienst läuft');
+  expect(settings.mcpService, isTrue, reason: 'die Wahl gilt auch nach dem nächsten Start');
+
+  // Client anlegen: Das Token ist nur jetzt zu sehen.
+  await _tap(tester, find.byKey(const Key('mcp-add-client')));
+  await _type(tester, find.byKey(const Key('mcp-client-name')), 'modell');
+  await _tap(tester, find.widgetWithText(FilledButton, t('Anlegen', 'Add')));
+  await _appears(tester, find.byKey(const Key('mcp-token')));
+  final token = tester.widget<SelectableText>(find.byKey(const Key('mcp-token'))).data!;
+  expect(token, startsWith('tephramcp_'));
+  await _shot(tester, '14-mcp-token');
+  await _tap(tester, find.byKey(const Key('mcp-token-done')));
+
+  // Den Host freigeben, mit Bestätigung jedes Befehls.
+  await _tap(tester, find.byKey(const Key('mcp-grant-modell')));
+  await _tap(tester, find.widgetWithText(FilledButton, t('Freigeben', 'Share')));
+  await _appears(tester, find.text(t('Mit Bestätigung', 'Confirm each')));
+  await _shot(tester, '15-mcp');
+
+  // Ein falsches Token kommt nicht durch.
+  final stranger = await _Bridge.start('tephramcp_falsch');
+  expect(await stranger.close(), isNot(0), reason: 'ein unbekanntes Token muss abgewiesen werden');
+
+  final bridge = await _Bridge.start(token);
+  await bridge.initialize();
+  await _until(tester, () => mcpState.clients.contains('modell'), 'Client verbunden');
+  final (hosts, _) = await bridge.tool('list_hosts', {});
+  expect(hosts, contains('Testserver'));
+
+  // Bestätigt: Der Befehl läuft und seine Ausgabe kommt zurück.
+  final approved = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': 'echo aus dem Modell'});
+  await _answerApproval(tester, 'echo aus dem Modell', const Key('mcp-approval-once'));
+  final (output, failed) = await approved;
+  expect(failed, isFalse, reason: output);
+  expect(output, contains('aus dem Modell'));
+
+  // Abgelehnt: Der Befehl läuft nicht.
+  final refused = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': 'echo nicht erlaubt'});
+  await _answerApproval(tester, 'echo nicht erlaubt', const Key('mcp-approval-deny'));
+  final (refusal, denied) = await refused;
+  expect(denied, isTrue, reason: refusal);
+  expect(refusal, isNot(contains('nicht erlaubt\n')));
+
+  expect(await bridge.close(), 0);
+  await _until(tester, () => mcpState.clients.isEmpty, 'Client getrennt');
+  final log = mcpAudit(limit: 20);
+  expect(log.any((entry) => entry.outcome == McpOutcome.approved && entry.detail == 'echo aus dem Modell'), isTrue);
+  expect(log.any((entry) => entry.outcome == McpOutcome.rejected && entry.detail == 'echo nicht erlaubt'), isTrue);
+
+  // Sperren beendet den Dienst; danach findet die Brücke ihn nicht mehr.
+  await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
+  await _appears(tester, find.text(t('Tresor entsperren', 'Unlock vault')));
+  expect(mcpServiceRunning(), isFalse);
+  final late = await _Bridge.start(token);
+  expect(await late.close(), isNot(0), reason: 'ohne offenen Tresor gibt es keinen Dienst');
+
+  // Nach dem Entsperren läuft er wieder von selbst.
+  await _type(tester, find.byType(TextField).first, _password);
+  await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
+  await _appears(tester, find.text('Testserver'));
+  await _until(tester, () => mcpState.running, 'Dienst läuft wieder');
 }
 
 void main() {
@@ -402,6 +545,9 @@ void main() {
     await _until(tester, () => _screen(session).contains('bereit>'), 'Eingabeaufforderung');
     await _tap(tester, find.byTooltip(t('Sitzung schließen', 'Close session')));
     await _appears(tester, find.text(t('Keine offenen Sitzungen', 'No open sessions')));
+
+    // ---- MCP: Dienst der App, Client, Freigabe, Rückfragen über die echte Brücke
+    if (_cli.isNotEmpty) await _mcp(tester);
 
     // ---- Abgleich: Konto auf dem Sync-Server anlegen, der Tresor wird hochgeladen
     if (_sync.isNotEmpty) {

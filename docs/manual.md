@@ -400,6 +400,9 @@ tephra daemon
 It asks for the master password, keeps the vault unlocked and waits. Requests for confirmation appear here. Stop it
 with Ctrl+C; that locks the vault and closes all connections and tunnels.
 
+Instead of `tephra daemon` the app can provide the service as well (see "In the app"). Only one of them runs for the
+same vault; the second one reports on start that the service is already running.
+
 **4. Enter the server in your MCP client.** The client must start the command `tephra mcp serve` with the environment
 variable `TEPHRA_MCP_TOKEN`. In the common JSON format:
 
@@ -512,8 +515,49 @@ the same input data, or the same file with the same content. Anything else, or n
 What you typed before the question appeared does not count. The same question appears before an unknown host key is
 trusted; a changed host key is always refused for MCP.
 
-The daemon needs a terminal to ask. If it runs without one, every request for confirmation is declined – only
-`read-only` and `auto` hosts are usable then.
+The daemon needs a terminal to ask. If it runs without one, every request for confirmation is declined and noted in
+the daemon's log – only `read-only` and `auto` hosts are usable then.
+
+### In the app
+
+On Windows and Linux the app has a section "MCP" of its own. Switch the service on there; it then runs while the vault
+is open and starts again by itself after unlocking – also after the next start of the app. You do not need
+`tephra daemon` for that.
+
+- **Requests for confirmation** appear as a dialog on top of the app, whichever section is open. What is shown in the
+  grey box comes from the model; control and invisible characters are made visible there as in the terminal. "Allow
+  once" and "Exactly this for this connection" can only be pressed after a short moment, so that a click already on
+  its way does not count as an answer; "Refuse" works at once. Without an answer within two minutes the request is
+  refused. On Windows the app flashes in the taskbar while a question waits and the window is in the background.
+- **Clients** are added there. The token is shown once, together with the ready-made entry for the configuration of
+  the client.
+- **Access** is given per client and host, with access level, patterns of your own and file access – as with
+  `tephra mcp grant`. A client can be blocked without losing its hosts.
+- The **kill switch** and the **log** are there as well.
+
+The section and the service change the same permissions as `tephra mcp`; what you change in one place applies in the
+other.
+
+### On a Linux server without login
+
+[`deploy/tephra-daemon.service`](../deploy/tephra-daemon.service) starts `tephra daemon` as a service of the user,
+already at boot and without anyone logging in. MCP clients of the same user connect with `tephra mcp serve` as usual,
+and the vault is kept in sync if the device is connected to a sync server.
+
+```bash
+mkdir -p ~/.config/tephra ~/.config/systemd/user
+(umask 077; read -rs -p "Master password: " pw && printf '%s' "$pw" > ~/.config/tephra/master-password)
+install -m 0644 deploy/tephra-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tephra-daemon
+sudo loginctl enable-linger "$USER"
+```
+
+The service reads the master password from the file named by `TEPHRA_PASSWORD_FILE`. Only the user may be able to read
+it; otherwise `tephra` refuses it. Whoever can read it – that user and root – can open the vault, so give this vault only
+the hosts and keys the server really needs. Without a terminal nobody can be asked: hosts with `read-only` and `auto`
+are usable, refused requests are in the log (`journalctl --user -u tephra-daemon`). `systemctl --user stop
+tephra-daemon` ends the service cleanly and locks the vault.
 
 ### What the model gets
 
@@ -677,6 +721,7 @@ target. The unit sets `TEPHRA_SERVER_BEHIND_PROXY`; your proxy must set `X-Forwa
 |---|---|---|
 | `TEPHRA_VAULT` | all commands | Path of the vault file |
 | `TEPHRA_PASSWORD` | all commands that unlock | Master password instead of the prompt |
+| `TEPHRA_PASSWORD_FILE` | all commands that unlock | File with the master password, for example for `tephra daemon` under systemd; on Linux readable by the user only |
 | `TEPHRA_NEW_PASSWORD` | `tephra init`, `tephra passwd`, `tephra recover` | New master password instead of the prompt |
 | `TEPHRA_IDENTITY_PASSWORD` | `tephra identity add` | Password to store instead of the prompt |
 | `TEPHRA_KEY_PASSPHRASE` | `tephra key import` | Passphrase of the key instead of the prompt |

@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../mcp.dart';
 import '../rust/api/app.dart';
 import '../settings.dart';
 import '../state.dart';
@@ -9,6 +10,7 @@ import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
 import 'logo.dart';
+import 'mcp_ui.dart';
 import 'sync_ui.dart';
 import 'terminal_page.dart';
 import 'update_ui.dart';
@@ -43,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _Section(Icons.badge_outlined, Icons.badge_rounded, t('Identitäten', 'Identities')),
     _Section(Icons.key_outlined, Icons.key_rounded, t('Schlüssel', 'Keys')),
     _Section(Icons.vpn_lock_outlined, Icons.vpn_lock_rounded, 'VPN'),
+    if (mcpState.supported) _Section(Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'MCP'),
   ];
 
   @override
@@ -153,7 +156,8 @@ class _HomeScreenState extends State<HomeScreen> {
       1 => TerminalPage(state: widget.state, onShowHosts: () => setState(() => _index = 0)),
       2 => const IdentitiesPage(),
       3 => const KeysPage(),
-      _ => const VpnPage(),
+      4 => const VpnPage(),
+      _ => const McpPage(),
     };
   }
 

@@ -40,7 +40,7 @@ The project is under active development. **What exists today:**
 
 **Not there yet:**
 
-- The app still lacks MCP permissions, snippets, port forwarding, transferring whole folders, changing the master
+- The app still lacks snippets, port forwarding, transferring whole folders, changing the master
   password, recovery with the recovery key and automatic locking; the command line covers these and, on Windows and
   Linux, uses the same vault. On Linux the app is exercised by the automated app test only; nobody has worked with it
   on a real desktop yet. The Android version has only been tried in the emulator so far.
@@ -161,6 +161,7 @@ first start of every further one. It keeps syncing for as long as the vault is o
 tephra mcp add-client desktop                            # shows the token once
 tephra mcp grant desktop web --level read-only
 tephra daemon                                            # unlocks the vault and waits for MCP clients
+                                                         # (or switch on the service in the app's section "MCP")
 ```
 
 In the MCP configuration of your client:
@@ -187,6 +188,7 @@ All commands with examples: [manual](docs/manual.md).
 |---|---|---|
 | `TEPHRA_VAULT` | `vault.tephra` in the user's data folder | Path of the vault file (same as `--vault`) |
 | `TEPHRA_PASSWORD` | – | Master password, instead of typing it (for scripts) |
+| `TEPHRA_PASSWORD_FILE` | – | File with the master password, for example for `tephra daemon` under systemd |
 | `TEPHRA_NEW_PASSWORD` | – | New master password for `tephra init`, `tephra passwd` and `tephra recover` |
 | `TEPHRA_IDENTITY_PASSWORD` | – | Password to store with `tephra identity add` |
 | `TEPHRA_KEY_PASSPHRASE` | – | Passphrase of the key for `tephra key import` |

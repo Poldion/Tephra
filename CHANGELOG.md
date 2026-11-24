@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] – 2026-11-24
+
+### Added
+
+- **MCP in the app (Windows, Linux):** a section "MCP" switches on the service for language models. It runs while the
+  vault is open and starts again by itself after unlocking, also after the next start of the app – `tephra daemon` is
+  no longer needed for that. Requests for confirmation appear as a dialog on top of the app with the same information
+  as in the terminal; the buttons that allow something only react after a short moment, refusing works at once, and on
+  Windows the app flashes in the taskbar while a question waits. The section also adds clients (the token is shown once
+  together with the entry for the client's configuration), gives and withdraws access per host with access level,
+  patterns and file access, blocks a client, holds the kill switch and shows the log.
+- **`tephra daemon` on a Linux server without login:** `TEPHRA_PASSWORD_FILE` names a file with the master password; on
+  Linux it must be readable by the user only, otherwise it is refused. Without a terminal, requests for confirmation are
+  refused and noted in the log instead of waiting for an answer that cannot come, and SIGTERM ends the daemon as cleanly
+  as Ctrl+C. `deploy/tephra-daemon.service` is a systemd user unit for it.
+
+### Changed
+
+- **Command line:** the local channel between `tephra mcp serve` and the service now lives in the library, so that the
+  app and `tephra daemon` share it. Only one of them can serve the same vault at a time.
+
 ## [0.4.0] – 2026-11-24
 
 ### Added

@@ -80,3 +80,7 @@ and fetches it. Start the server with `tephra-server --bind 127.0.0.1:8790 --reg
 emulator forward the port first (`adb reverse tcp:8790 tcp:8790`) and use `http://127.0.0.1:8790`. With an unencrypted
 address that is not the own machine – bind the server to `127.0.0.2:8790` and use `http://127.0.0.2:8790` – the test
 also checks that the app accepts it only after "Connect without encryption" was ticked.
+
+With `--dart-define=TEPHRA_TEST_CLI=<path to tephra>` (desktop only) the test switches on the app's MCP service, adds a
+client, shares the host with it and starts the real bridge `tephra mcp serve`: one command is approved in the app's
+dialog, a second one refused, and locking the vault has to end the service.
