@@ -277,6 +277,12 @@ enum McpCommand {
     Enable,
     /// Schaltet den MCP-Zugriff insgesamt ab (Not-Aus).
     Disable,
+    /// Zeigt, wie lange ein Befehl laufen darf, oder setzt die Grenze.
+    Limits {
+        /// Längste Laufzeit, die ein Modell für einen Befehl wählen darf, in Sekunden (60 bis 86400).
+        #[arg(long)]
+        max_timeout: Option<u64>,
+    },
     /// Zeigt das Protokoll der Zugriffe.
     Audit {
         #[arg(short, long, default_value_t = 30)]
@@ -990,6 +996,19 @@ fn mcp(core: &Core, command: McpCommand) -> Fallible {
             policy.enabled = matches!(command, McpCommand::Enable);
             policy.save(core).map_err(text)?;
             println!("MCP-Zugriff ist jetzt {}.", if policy.enabled { "eingeschaltet" } else { "abgeschaltet" });
+        }
+        McpCommand::Limits { max_timeout } => {
+            if let Some(secs) = max_timeout {
+                if !policy.limits.set_max_timeout_secs(secs) {
+                    let range = tephra_mcp::policy::MAX_TIMEOUT_RANGE;
+                    return Err(format!("Erlaubt sind {} bis {} Sekunden.", range.start(), range.end()));
+                }
+                policy.save(core).map_err(text)?;
+            }
+            println!(
+                "Ohne Angabe des Modells läuft ein Befehl höchstens {} s; das Modell darf bis zu {} s wählen.",
+                policy.limits.default_timeout_secs, policy.limits.max_timeout_secs
+            );
         }
         McpCommand::Audit { number } => {
             let entries = audit::read(core, number, None).map_err(text)?;

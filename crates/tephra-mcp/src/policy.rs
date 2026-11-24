@@ -100,7 +100,13 @@ pub struct Limits {
     /// Zeichen, die ein Werkzeugaufruf höchstens zurückgibt; der Rest lässt
     /// sich seitenweise nachladen.
     pub page_chars: usize,
+    /// Laufzeit eines Befehls, wenn das Modell keine angibt.
     pub default_timeout_secs: u64,
+    /// Längste Laufzeit, die das Modell für einen Befehl wählen darf. Bis
+    /// Version 0.5 stand hier unter `max_timeout_secs` fest 600; einstellen
+    /// ließ sich das nie. Der neue Name sorgt dafür, dass gespeicherte
+    /// Freigaben die neue Vorgabe bekommen.
+    #[serde(rename = "max_command_secs")]
     pub max_timeout_secs: u64,
     pub calls_per_minute: u32,
     /// Gleichzeitig offene interaktive Sitzungen je Client.
@@ -114,11 +120,30 @@ impl Default for Limits {
             max_output_bytes: 2 * 1024 * 1024,
             page_chars: 20_000,
             default_timeout_secs: 60,
-            max_timeout_secs: 600,
+            max_timeout_secs: 3600,
             calls_per_minute: 120,
             max_sessions: 4,
             max_file_bytes: 1024 * 1024,
         }
+    }
+}
+
+/// Was sich als längste Laufzeit eines Befehls einstellen lässt: eine Minute bis ein Tag.
+pub const MAX_TIMEOUT_RANGE: std::ops::RangeInclusive<u64> = 60..=86_400;
+
+impl Limits {
+    /// Setzt die längste Laufzeit eines Befehls. `false`, wenn der Wert außerhalb von [`MAX_TIMEOUT_RANGE`] liegt.
+    pub fn set_max_timeout_secs(&mut self, secs: u64) -> bool {
+        if !MAX_TIMEOUT_RANGE.contains(&secs) {
+            return false;
+        }
+        self.max_timeout_secs = secs;
+        true
+    }
+
+    /// Die Laufzeit eines Befehls: die gewünschte, sonst die Vorgabe, höchstens die eingestellte Grenze.
+    pub fn command_timeout(&self, wanted: Option<u64>) -> u64 {
+        wanted.unwrap_or(self.default_timeout_secs).clamp(1, self.max_timeout_secs.max(1))
     }
 }
 

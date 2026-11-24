@@ -274,6 +274,13 @@ Future<void> _mcp(WidgetTester tester) async {
   await _until(tester, () => mcpState.clients.contains('modell'), 'Client verbunden');
   final (hosts, _) = await bridge.tool('list_hosts', {});
   expect(hosts, contains('Testserver'));
+  expect(jsonDecode(hosts)['limits'], {'default_timeout_secs': 60, 'max_timeout_secs': 3600});
+
+  // Die längste Laufzeit stellt der Nutzer ein; das Modell erfährt sie über list_hosts.
+  await _tap(tester, find.byKey(const Key('mcp-max-timeout')));
+  await _tap(tester, find.text(t('2 Stunden', '2 hours')).last);
+  final (again, _) = await bridge.tool('list_hosts', {});
+  expect(jsonDecode(again)['limits']['max_timeout_secs'], 7200);
 
   // Bestätigt: Der Befehl läuft und seine Ausgabe kommt zurück.
   final approved = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': 'echo aus dem Modell'});

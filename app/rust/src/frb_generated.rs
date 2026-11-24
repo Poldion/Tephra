@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 705970687;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1753591705;
 
 // Section: executor
 
@@ -1098,6 +1098,31 @@ fn wire__crate__api__mcp__mcp_set_enabled_impl(
             deserializer.end();
             transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>((move || {
                 let output_ok = crate::api::mcp::mcp_set_enabled(api_enabled)?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__mcp__mcp_set_max_timeout_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "mcp_set_max_timeout",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_)
+            };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_secs = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>((move || {
+                let output_ok = crate::api::mcp::mcp_set_max_timeout(api_secs)?;
                 std::result::Result::Ok(output_ok)
             })())
         },
@@ -2245,7 +2270,12 @@ impl SseDecode for crate::api::mcp::McpOverview {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_enabled = <bool>::sse_decode(deserializer);
         let mut var_clients = <Vec<crate::api::mcp::McpClient>>::sse_decode(deserializer);
-        return crate::api::mcp::McpOverview { enabled: var_enabled, clients: var_clients };
+        let mut var_maxTimeoutSecs = <u32>::sse_decode(deserializer);
+        return crate::api::mcp::McpOverview {
+            enabled: var_enabled,
+            clients: var_clients,
+            max_timeout_secs: var_maxTimeoutSecs,
+        };
     }
 }
 
@@ -2601,19 +2631,19 @@ fn pde_ffi_dispatcher_primary_impl(
         19 => wire__crate__api__app__install_key_on_host_impl(port, ptr, rust_vec_len, data_len),
         25 => wire__crate__api__app__lock_vault_impl(port, ptr, rust_vec_len, data_len),
         36 => wire__crate__api__mcp__mcp_service_start_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__app__open_session_impl(port, ptr, rust_vec_len, data_len),
-        44 => wire__crate__api__app__session_close_impl(port, ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__app__session_resize_impl(port, ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__app__session_write_impl(port, ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__sync__sync_devices_impl(port, ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__sync__sync_disconnect_impl(port, ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__sync__sync_join_impl(port, ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__sync__sync_reconnect_impl(port, ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__sync__sync_register_impl(port, ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__sync__sync_remove_device_impl(port, ptr, rust_vec_len, data_len),
-        57 => wire__crate__api__sync__sync_watch_impl(port, ptr, rust_vec_len, data_len),
-        58 => wire__crate__api__app__test_vpn_profile_impl(port, ptr, rust_vec_len, data_len),
-        59 => wire__crate__api__app__unlock_vault_impl(port, ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__app__open_session_impl(port, ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__app__session_close_impl(port, ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__app__session_resize_impl(port, ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__app__session_write_impl(port, ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__sync__sync_devices_impl(port, ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__sync__sync_disconnect_impl(port, ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__sync__sync_join_impl(port, ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__sync__sync_reconnect_impl(port, ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__sync__sync_register_impl(port, ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__sync__sync_remove_device_impl(port, ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__sync__sync_watch_impl(port, ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__app__test_vpn_profile_impl(port, ptr, rust_vec_len, data_len),
+        60 => wire__crate__api__app__unlock_vault_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2653,14 +2683,15 @@ fn pde_ffi_dispatcher_sync_impl(
         37 => wire__crate__api__mcp__mcp_service_stop_impl(ptr, rust_vec_len, data_len),
         38 => wire__crate__api__mcp__mcp_set_client_disabled_impl(ptr, rust_vec_len, data_len),
         39 => wire__crate__api__mcp__mcp_set_enabled_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__mcp__mcp_supported_impl(ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__app__save_host_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__app__save_identity_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__sync__sync_connection_impl(ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__sync__sync_is_unencrypted_impl(ptr, rust_vec_len, data_len),
-        55 => wire__crate__api__sync__sync_trust_roots_impl(ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__sync__sync_unwatch_impl(ptr, rust_vec_len, data_len),
-        60 => wire__crate__api__app__vault_exists_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__mcp__mcp_set_max_timeout_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__mcp__mcp_supported_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__app__save_host_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__app__save_identity_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__sync__sync_connection_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__sync__sync_is_unencrypted_impl(ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__sync__sync_trust_roots_impl(ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__sync__sync_unwatch_impl(ptr, rust_vec_len, data_len),
+        61 => wire__crate__api__app__vault_exists_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2943,7 +2974,12 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mcp::McpOutcome> for crate::a
 // Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::mcp::McpOverview {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
-        [self.enabled.into_into_dart().into_dart(), self.clients.into_into_dart().into_dart()].into_dart()
+        [
+            self.enabled.into_into_dart().into_dart(),
+            self.clients.into_into_dart().into_dart(),
+            self.max_timeout_secs.into_into_dart().into_dart(),
+        ]
+        .into_dart()
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::mcp::McpOverview {}
@@ -3593,6 +3629,7 @@ impl SseEncode for crate::api::mcp::McpOverview {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.enabled, serializer);
         <Vec<crate::api::mcp::McpClient>>::sse_encode(self.clients, serializer);
+        <u32>::sse_encode(self.max_timeout_secs, serializer);
     }
 }
 

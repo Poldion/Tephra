@@ -302,6 +302,8 @@ pub struct McpOverview {
     /// `false` ist der Not-Aus: Dann wird jeder Zugriff abgelehnt.
     pub enabled: bool,
     pub clients: Vec<McpClient>,
+    /// Längste Laufzeit, die ein Modell für einen Befehl wählen darf, in Sekunden.
+    pub max_timeout_secs: u32,
 }
 
 fn policy() -> Result<McpPolicy> {
@@ -357,7 +359,19 @@ pub fn mcp_overview() -> Result<McpOverview> {
                 .collect(),
         })
         .collect();
-    Ok(McpOverview { enabled: policy.enabled, clients })
+    let max_timeout_secs = u32::try_from(policy.limits.max_timeout_secs).unwrap_or(u32::MAX);
+    Ok(McpOverview { enabled: policy.enabled, clients, max_timeout_secs })
+}
+
+/// Setzt die längste Laufzeit, die ein Modell für einen Befehl wählen darf (eine Minute bis ein Tag).
+#[frb(sync)]
+pub fn mcp_set_max_timeout(secs: u32) -> Result<()> {
+    change(|policy| {
+        if !policy.limits.set_max_timeout_secs(u64::from(secs)) {
+            bail!("Die Grenze muss zwischen einer Minute und einem Tag liegen");
+        }
+        Ok(())
+    })
 }
 
 /// Legt einen Client an. Zurück kommt sein Token – nur dieses eine Mal; der

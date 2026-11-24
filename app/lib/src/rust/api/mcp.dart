@@ -35,6 +35,10 @@ bool mcpAnswer({required int id, required McpAnswer answer}) =>
 /// Clients mit ihren Freigaben und der Stand des Not-Aus.
 McpOverview mcpOverview() => RustLib.instance.api.crateApiMcpMcpOverview();
 
+/// Setzt die längste Laufzeit, die ein Modell für einen Befehl wählen darf (eine Minute bis ein Tag).
+void mcpSetMaxTimeout({required int secs}) =>
+    RustLib.instance.api.crateApiMcpMcpSetMaxTimeout(secs: secs);
+
 /// Legt einen Client an. Zurück kommt sein Token – nur dieses eine Mal; der
 /// Tresor behält davon bloß einen Hash.
 String mcpAddClient({required String name}) =>
@@ -260,10 +264,18 @@ class McpOverview {
   final bool enabled;
   final List<McpClient> clients;
 
-  const McpOverview({required this.enabled, required this.clients});
+  /// Längste Laufzeit, die ein Modell für einen Befehl wählen darf, in Sekunden.
+  final int maxTimeoutSecs;
+
+  const McpOverview({
+    required this.enabled,
+    required this.clients,
+    required this.maxTimeoutSecs,
+  });
 
   @override
-  int get hashCode => enabled.hashCode ^ clients.hashCode;
+  int get hashCode =>
+      enabled.hashCode ^ clients.hashCode ^ maxTimeoutSecs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -271,7 +283,8 @@ class McpOverview {
       other is McpOverview &&
           runtimeType == other.runtimeType &&
           enabled == other.enabled &&
-          clients == other.clients;
+          clients == other.clients &&
+          maxTimeoutSecs == other.maxTimeoutSecs;
 }
 
 /// Eine Rückfrage an den Nutzer. Alle Texte, die vom Modell stammen, sind

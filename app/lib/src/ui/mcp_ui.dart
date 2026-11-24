@@ -181,6 +181,8 @@ class _McpPageState extends State<McpPage> {
                 _ServiceCard(
                   enabled: overview.enabled,
                   onEnabled: (v) => _change(() => mcpSetEnabled(enabled: v)),
+                  maxTimeout: overview.maxTimeoutSecs,
+                  onMaxTimeout: (secs) => _change(() => mcpSetMaxTimeout(secs: secs)),
                 ),
                 const SizedBox(height: 8),
                 if (overview.clients.isEmpty)
@@ -300,10 +302,24 @@ class _McpPageState extends State<McpPage> {
 
 /// Schalter für den Dienst und der Not-Aus.
 class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({required this.enabled, required this.onEnabled});
+  const _ServiceCard({
+    required this.enabled,
+    required this.onEnabled,
+    required this.maxTimeout,
+    required this.onMaxTimeout,
+  });
 
   final bool enabled;
   final ValueChanged<bool> onEnabled;
+  final int maxTimeout;
+  final ValueChanged<int> onMaxTimeout;
+
+  static String _duration(int secs) => switch (secs) {
+    < 3600 when secs % 60 == 0 => t('${secs ~/ 60} Minuten', '${secs ~/ 60} minutes'),
+    3600 => t('1 Stunde', '1 hour'),
+    _ when secs % 3600 == 0 => t('${secs ~/ 3600} Stunden', '${secs ~/ 3600} hours'),
+    _ => t('$secs Sekunden', '$secs seconds'),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -351,6 +367,28 @@ class _ServiceCard extends StatelessWidget {
                     'Der Not-Aus: Ausgeschaltet wird jeder Zugriff abgelehnt, und laufende Sitzungen der Modelle enden binnen Sekunden.',
                     'The kill switch: switched off, every access is refused and running sessions of the models end within seconds.',
                   ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text(t('Längste Laufzeit eines Befehls', 'Longest run time of a command')),
+                subtitle: Text(
+                  t(
+                    'Das Modell wählt die Laufzeit je Befehl selbst, höchstens so lange. Ohne Angabe ist nach einer Minute Schluss.',
+                    'The model chooses the run time of each command itself, at most this long. Without a choice a command stops after one minute.',
+                  ),
+                ),
+                trailing: DropdownButton<int>(
+                  key: const Key('mcp-max-timeout'),
+                  value: maxTimeout,
+                  underline: const SizedBox.shrink(),
+                  onChanged: (secs) {
+                    if (secs != null) onMaxTimeout(secs);
+                  },
+                  items: [
+                    for (final secs in {600, 1800, 3600, 7200, 21600, 86400, maxTimeout}.toList()..sort())
+                      DropdownMenuItem(value: secs, child: Text(_duration(secs))),
+                  ],
                 ),
               ),
             ],

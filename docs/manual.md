@@ -571,8 +571,19 @@ tephra-daemon` ends the service cleanly and locks the vault.
 | `tunnel_status` | Whether a host is reached through a tunnel and the tunnel's state |
 | `files_list`, `files_read`, `files_write` | Directory listing, reading and writing text files over SFTP |
 
-Limits: 120 calls per minute and client, 4 open sessions per connection, 60 seconds per command by default (600 at
-most), 2 MiB of output per command and stream, 1 MiB per file. Long output is delivered in pages of 20,000 characters.
+Limits: 120 calls per minute and client, 4 open sessions per connection, 2 MiB of output per command and stream, 1 MiB
+per file. Long output is delivered in pages of 20,000 characters.
+
+**Run time of commands.** The model chooses for each command how long it may run (`timeout_secs`); without a choice a
+command stops after 60 seconds. How long it may choose at most is up to you – in the app's section "MCP" under "Longest
+run time of a command" or with `tephra mcp limits --max-timeout <seconds>`, between one minute and one day; without a
+setting it is one hour. The model learns the limit from `list_hosts`, and a command that was stopped tells it how much
+would have been possible.
+
+While a command runs or waits for your confirmation, Tephra tells the client every 15 seconds that work is still going
+on. Clients that restart their own time limit for tool calls with each such message therefore do not give up on long
+commands early; whether yours does depends on the client. If the client gives up on a call, the command on the host ends
+as well, and the log notes the cancellation.
 
 **Redaction.** The credentials involved in reaching a host – its password, key and passphrase, those of its jump
 hosts, its proxy password and the keys of its VPN profile – are replaced by `[redacted]` if they appear in the output
@@ -589,6 +600,8 @@ tephra mcp disable                               # kill switch
 tephra mcp enable
 tephra mcp audit                                 # the last 30 entries
 tephra mcp audit -n 200
+tephra mcp limits                                # how long a command may run
+tephra mcp limits --max-timeout 7200             # the model may choose up to two hours
 ```
 
 **Kill switch and revocation.** `tephra mcp disable` rejects every further call and, within a few seconds, ends all

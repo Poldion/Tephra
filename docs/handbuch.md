@@ -591,8 +591,19 @@ Tresor.
 | `tunnel_status` | Ob ein Host durch einen Tunnel erreicht wird und in welchem Zustand der Tunnel ist |
 | `files_list`, `files_read`, `files_write` | Verzeichnis auflisten, Textdateien lesen und schreiben über SFTP |
 
-Grenzen: 120 Aufrufe pro Minute und Client, 4 offene Sitzungen je Verbindung, 60 Sekunden je Befehl ohne andere Angabe
-(höchstens 600), 2 MiB Ausgabe je Befehl und Strom, 1 MiB je Datei. Lange Ausgaben kommen in Seiten zu 20.000 Zeichen.
+Grenzen: 120 Aufrufe pro Minute und Client, 4 offene Sitzungen je Verbindung, 2 MiB Ausgabe je Befehl und Strom,
+1 MiB je Datei. Lange Ausgaben kommen in Seiten zu 20.000 Zeichen.
+
+**Laufzeit von Befehlen.** Das Modell wählt für jeden Befehl selbst, wie lange er laufen darf (`timeout_secs`); ohne
+Angabe ist nach 60 Sekunden Schluss. Wie lange es höchstens wählen darf, legst du fest – in der App im Bereich „MCP“
+unter „Längste Laufzeit eines Befehls“ oder mit `tephra mcp limits --max-timeout <Sekunden>`, zwischen einer Minute
+und einem Tag; ohne Einstellung ist es eine Stunde. Das Modell erfährt die Grenze über `list_hosts`, und ein
+abgebrochener Befehl sagt ihm, wie viel möglich gewesen wäre.
+
+Während ein Befehl läuft oder auf deine Bestätigung wartet, meldet Tephra dem Client alle 15 Sekunden, dass noch
+gearbeitet wird. Clients, die ihr eigenes Zeitlimit für Werkzeugaufrufe mit jeder solchen Meldung neu beginnen, brechen
+lange Befehle deshalb nicht vorzeitig ab; ob dein Client das tut, hängt von ihm ab. Gibt der Client einen Aufruf auf,
+endet auch der Befehl auf dem Host, und das Protokoll vermerkt den Abbruch.
 
 **Schwärzung.** Die Zugangsdaten, die beim Verbinden mit einem Host im Spiel sind – sein Passwort, Schlüssel und
 dessen Passphrase, die seiner Jump-Hosts, sein Proxy-Passwort und die Schlüssel seines VPN-Profils –, werden durch
@@ -610,6 +621,8 @@ tephra mcp disable                               # Not-Aus
 tephra mcp enable
 tephra mcp audit                                 # die letzten 30 Einträge
 tephra mcp audit -n 200
+tephra mcp limits                                # wie lange ein Befehl laufen darf
+tephra mcp limits --max-timeout 7200             # das Modell darf bis zu zwei Stunden wählen
 ```
 
 **Not-Aus und Entzug.** `tephra mcp disable` lehnt jeden weiteren Aufruf ab und beendet binnen weniger Sekunden alle

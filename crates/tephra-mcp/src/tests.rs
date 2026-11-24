@@ -5,8 +5,10 @@ use crate::audit::{self, Outcome};
 use crate::policy::{AccessLevel, HostGrant, McpPolicy};
 use crate::{Action, ApprovalAnswer, ApprovalRequest, Approver, McpServer};
 use async_trait::async_trait;
-use rmcp::model::{CallToolRequestParams, ClientConfig};
-use rmcp::service::RunningService;
+use rmcp::model::{
+    CallToolRequestParams, ClientConfig, NumberOrString, ProgressNotificationParam, ProgressToken, RequestMetaObject,
+};
+use rmcp::service::{NotificationContext, RunningService};
 use rmcp::{ClientHandler, RoleClient, ServiceExt};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -14,12 +16,19 @@ use tephra_core::model::{AuthMethod, Host, Identity, ItemId, KnownHost, Snippet}
 use tephra_core::{Core, KdfParams};
 use tephra_ssh::testing::{PASSWORD, TestServer, USER};
 
+/// MCP-Client der Tests; merkt sich die Fortschrittsmeldungen des Servers.
 #[derive(Clone, Default)]
-struct Client;
+struct Client {
+    progress: Arc<Mutex<Vec<ProgressNotificationParam>>>,
+}
 
 impl ClientHandler for Client {
     fn get_info(&self) -> ClientConfig {
         ClientConfig::default()
+    }
+
+    async fn on_progress(&self, params: ProgressNotificationParam, _context: NotificationContext<RoleClient>) {
+        self.progress.lock().expect("lock").push(params);
     }
 }
 
@@ -44,6 +53,7 @@ struct Harness {
     client_id: String,
     answers: Arc<Answers>,
     mcp: RunningService<RoleClient, Client>,
+    progress: Arc<Mutex<Vec<ProgressNotificationParam>>>,
     _dir: tempfile::TempDir,
 }
 
@@ -102,8 +112,10 @@ impl Harness {
         tokio::spawn(async move {
             let _ = mcp_server.serve_stream(server_side).await;
         });
-        let mcp = Client.serve(client_side).await.expect("mcp-client");
-        Self { core, server, host, client_id, answers, mcp, _dir: dir }
+        let client = Client::default();
+        let progress = client.progress.clone();
+        let mcp = client.serve(client_side).await.expect("mcp-client");
+        Self { core, server, host, client_id, answers, mcp, progress, _dir: dir }
     }
 
     /// Ruft ein Werkzeug auf: `Ok` mit dem strukturierten Ergebnis oder `Err`
@@ -111,6 +123,10 @@ impl Harness {
     async fn call(&self, tool: &str, arguments: Value) -> Result<Value, String> {
         let params =
             CallToolRequestParams::new(tool.to_string()).with_arguments(arguments.as_object().expect("objekt").clone());
+        self.call_with(params).await
+    }
+
+    async fn call_with(&self, params: CallToolRequestParams) -> Result<Value, String> {
         let result = self.mcp.call_tool(params).await.map_err(|e| format!("Protokollfehler: {e}"))?;
         let text = result.content.first().and_then(|c| c.as_text()).map(|t| t.text.clone()).unwrap_or_default();
         if result.is_error == Some(true) {
@@ -210,6 +226,9 @@ async fn befehl_ausfuehren_per_label_und_per_id() {
     let out =
         h.call("ssh_exec", json!({"host": "web1", "command": "sleep 5000", "timeout_secs": 1})).await.expect("exec");
     assert_eq!(out["timed_out"], true);
+    assert_eq!(out["timeout_secs"], 1);
+    // Wer abgebrochen wurde, erfährt, wie lange es hätte dauern dürfen.
+    assert!(out["hint"].as_str().expect("hinweis").contains("up to 3600"), "{out}");
 
     // Jeder Befehl hinterlässt zwei Einträge: vor der Ausführung und nach dem Ende.
     let entries = h.audits(2);
@@ -623,4 +642,113 @@ async fn nur_lesen_schreibt_auch_mit_dateifreigabe_nicht() {
         "alt"
     );
     assert!(h.asked().is_empty());
+}
+
+#[tokio::test]
+async fn das_modell_waehlt_die_laufzeit_bis_zur_grenze_des_nutzers() {
+    let h = Harness::new(auto(), ApprovalAnswer::Deny).await;
+    // Das Modell erfährt die Grenzen, bevor es etwas ausführt.
+    let listed = h.call("list_hosts", json!({})).await.expect("liste");
+    assert_eq!(listed["limits"], json!({"default_timeout_secs": 60, "max_timeout_secs": 3600}));
+
+    let out = h.call("ssh_exec", json!({"host": "web1", "command": "echo x"})).await.expect("exec");
+    assert_eq!(out["timeout_secs"], 60);
+    assert!(out.get("timeout_note").is_none());
+
+    let out =
+        h.call("ssh_exec", json!({"host": "web1", "command": "echo x", "timeout_secs": 1800})).await.expect("exec");
+    assert_eq!(out["timeout_secs"], 1800);
+
+    // Mehr als der Nutzer erlaubt, gibt es nicht – und das Modell erfährt es.
+    h.set_policy(|p| assert!(p.limits.set_max_timeout_secs(120)));
+    let out =
+        h.call("ssh_exec", json!({"host": "web1", "command": "echo x", "timeout_secs": 1800})).await.expect("exec");
+    assert_eq!(out["timeout_secs"], 120);
+    assert!(out["timeout_note"].as_str().expect("hinweis").contains("120"), "{out}");
+    assert_eq!(h.call("list_hosts", json!({})).await.expect("liste")["limits"]["max_timeout_secs"], 120);
+
+    // Die Grenze selbst bleibt in einem vernünftigen Rahmen.
+    let mut policy = McpPolicy::default();
+    assert!(!policy.limits.set_max_timeout_secs(10));
+    assert!(!policy.limits.set_max_timeout_secs(100_000));
+    assert_eq!(policy.limits.max_timeout_secs, 3600);
+}
+
+#[test]
+fn gespeicherte_alte_grenze_weicht_der_neuen_vorgabe() {
+    // Bis 0.5 stand die feste Grenze von 600 Sekunden mit in den gespeicherten Freigaben.
+    let old = json!({"enabled": true, "clients": [], "limits": {"default_timeout_secs": 60, "max_timeout_secs": 600}});
+    let policy: McpPolicy = serde_json::from_value(old).expect("lesen");
+    assert_eq!(policy.limits.max_timeout_secs, 3600);
+    let saved = serde_json::to_value(&policy).expect("schreiben");
+    assert_eq!(saved["limits"]["max_command_secs"], 3600);
+}
+
+#[tokio::test]
+async fn lange_befehle_melden_fortschritt() {
+    let h = Harness::new(auto(), ApprovalAnswer::Deny).await;
+    // Der Client der Tests bittet wie viele echte Clients bei jedem Aufruf um Fortschrittsmeldungen.
+    let out =
+        h.call("ssh_exec", json!({"host": "web1", "command": "sleep 700", "timeout_secs": 30})).await.expect("exec");
+    assert_eq!(out["timed_out"], false);
+    let progress = h.progress.lock().expect("lock").clone();
+    assert!(!progress.is_empty(), "keine Fortschrittsmeldung während des Befehls");
+    // Alle Meldungen gehören zu diesem einen Aufruf.
+    assert!(progress.iter().all(|p| p.progress_token == progress[0].progress_token), "{progress:?}");
+    assert!(progress.iter().all(|p| p.total == Some(30.0)));
+}
+
+#[tokio::test]
+async fn auch_das_warten_auf_eine_bestaetigung_meldet_fortschritt() {
+    struct Slow;
+    #[async_trait]
+    impl Approver for Slow {
+        async fn approve(&self, _request: &ApprovalRequest) -> ApprovalAnswer {
+            tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+            ApprovalAnswer::Once
+        }
+    }
+    let h = Harness::new(HostGrant { level: AccessLevel::Confirm, ..HostGrant::default() }, ApprovalAnswer::Deny).await;
+    let (server_side, client_side) = tokio::io::duplex(64 * 1024);
+    let server = McpServer::new(h.core.clone(), h.client_id.clone(), Arc::new(Slow));
+    tokio::spawn(async move {
+        let _ = server.serve_stream(server_side).await;
+    });
+    let client = Client::default();
+    let progress = client.progress.clone();
+    let mcp = client.serve(client_side).await.expect("mcp-client");
+    let mut meta = RequestMetaObject::new();
+    meta.set_progress_token(ProgressToken(NumberOrString::Number(7)));
+    let mut params = CallToolRequestParams::new("ssh_exec")
+        .with_arguments(json!({"host": "web1", "command": "echo ja"}).as_object().expect("objekt").clone());
+    params.meta = Some(meta);
+    let result = mcp.call_tool(params).await.expect("aufruf");
+    assert_ne!(result.is_error, Some(true));
+    let progress = progress.lock().expect("lock").clone();
+    assert!(
+        progress.iter().any(|p| p.message.as_deref().is_some_and(|m| m.contains("confirm"))),
+        "kein Lebenszeichen, während die Bestätigung aussteht: {progress:?}"
+    );
+}
+
+#[tokio::test]
+async fn gibt_der_client_auf_endet_auch_der_befehl() {
+    let h = Harness::new(auto(), ApprovalAnswer::Deny).await;
+    let params = CallToolRequestParams::new("ssh_exec").with_arguments(
+        json!({"host": "web1", "command": "sleep 60000", "timeout_secs": 600}).as_object().expect("objekt").clone(),
+    );
+    // Der Aufruf wird verworfen, bevor der Befehl fertig ist; der Client meldet dem Server den Abbruch.
+    let gave_up = tokio::time::timeout(std::time::Duration::from_millis(500), h.mcp.call_tool(params)).await;
+    assert!(gave_up.is_err(), "der Befehl hätte noch laufen müssen");
+    let mut finished = None;
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        finished = h.audits(1).into_iter().next().filter(|e| e.outcome == Outcome::Failed);
+        if finished.is_some() {
+            break;
+        }
+    }
+    let finished = finished.expect("der Abbruch muss im Protokoll stehen");
+    assert_eq!(finished.detail, "sleep 60000");
+    assert!(finished.note.contains("Cancelled by the client"), "{}", finished.note);
 }

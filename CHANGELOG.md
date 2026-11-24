@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] – 2026-11-24
+
+### Added
+
+- **MCP: the model chooses how long a command may run.** Up to a limit you set – in the app under "Longest run time of a
+  command", on the command line with `tephra mcp limits --max-timeout <seconds>`, between one minute and one day. Without
+  a setting the limit is one hour instead of the fixed ten minutes so far; without a choice of the model a command still
+  stops after 60 seconds. `list_hosts` tells the model the limits, the result of every command says which run time
+  applied, and a command that was stopped says how much would have been possible.
+- **MCP: signs of life for long calls.** While a command runs or waits for your confirmation, Tephra tells the client
+  every 15 seconds that it is still working. Clients that restart their own time limit on such a message no longer give
+  up on long commands after a minute.
+
+### Changed
+
+- **MCP:** if the client gives up on a call, the command on the host ends as well and the log notes it, instead of the
+  command running on unnoticed.
+
 ## [0.5.0] – 2026-11-24
 
 ### Added
