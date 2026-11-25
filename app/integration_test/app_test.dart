@@ -456,6 +456,33 @@ void main() {
     await _until(tester, () => _screen(session).contains('Grüße aus der App ✓'), 'Echo');
     await _shot(tester, '11-terminal');
 
+    // ---- Am Telefon: langes Antippen wählt aus, die Leiste kopiert
+    if (Platform.isAndroid) {
+      _step('Kopieren am Telefon');
+      await tester.longPressAt(tester.getTopLeft(find.byType(TerminalView)) + const Offset(16, 16));
+      await _appears(tester, find.byKey(const Key('terminal-selection-bar')));
+      await _tap(tester, find.byKey(const Key('terminal-select-all')));
+      await _shot(tester, '11-auswahl');
+      await _tap(tester, find.byKey(const Key('terminal-copy')));
+      await _until(tester, () => find.byKey(const Key('terminal-selection-bar')).evaluate().isEmpty, 'Leiste weg');
+      // Solange Android seine eigene Kopiert-Anzeige zeigt, lässt es die Zwischenablage nicht lesen.
+      var copied = '';
+      for (var i = 0; i < 40 && copied.isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+        copied = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+      }
+      expect(copied, contains('Grüße aus der App ✓'));
+      expect(copied, contains('bereit>'));
+
+      // Die Taste „Einfügen“ der Zusatzleiste schickt es zurück an den Host.
+      // Am schmalen Bildschirm bricht die Zeile um; gezählt wird deshalb ohne Zeilenumbrüche.
+      int shown() => 'Grüße aus der App ✓'.allMatches(_screen(session).split('\n').join()).length;
+      final before = shown();
+      await _tap(tester, find.text(t('Einfügen', 'Paste')));
+      await _until(tester, () => shown() > before, 'Eingefügt');
+      await _shot(tester, '11-eingefuegt');
+    }
+
     // ---- Dateien des Hosts: anlegen, übertragen, umbenennen, löschen
     _step('Dateien');
     await _tap(tester, find.byKey(const ValueKey('view-files')));

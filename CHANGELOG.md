@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] – 2026-11-25
+
+### Added
+
+- **Copying from the terminal on the phone:** touching and holding selects a word, holding and dragging extends the
+  selection. A bar above the terminal then copies it to the clipboard or selects everything, including what has
+  already scrolled out of view. A new key "Paste" in the row of extra keys inserts the clipboard into the terminal.
+
 ## [0.6.0] – 2026-11-24
 
 ### Added

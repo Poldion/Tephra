@@ -37,7 +37,8 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 - Die grafische App für Windows, Linux und Android in einer ersten Fassung (Ordner `app/`): Tresor anlegen und
   entsperren, Hosts, Identitäten, Schlüssel und WireGuard-Profile verwalten, Terminalsitzungen in Reitern – direkt, über
   Sprunghosts oder durch den Tunnel – und in jeder Sitzung ein Dateibrowser über SFTP. Unter Android mit einer Leiste
-  von PC-Tasten (Esc, Tab, Strg, Alt, Pfeile, Funktionstasten) über der Tastatur; offene Sitzungen bleiben verbunden,
+  von PC-Tasten (Esc, Tab, Strg, Alt, Pfeile, Funktionstasten, Einfügen) über der Tastatur; langes Antippen im
+  Terminal wählt Text aus und kopiert ihn; offene Sitzungen bleiben verbunden,
   während die App im Hintergrund ist. Die App gleicht mit deinem Sync-Server ab, solange der Tresor offen ist – Telefon
   und Rechner teilen sich so einen Tresor –, und sie kann sich aus den Veröffentlichungen auf GitHub selbst
   aktualisieren.

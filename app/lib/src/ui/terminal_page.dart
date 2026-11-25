@@ -10,6 +10,7 @@ import '../text.dart';
 import 'common.dart';
 import 'extra_keys.dart';
 import 'files_view.dart';
+import 'terminal_selection.dart';
 
 /// Die offenen Terminalsitzungen als Reiter.
 class TerminalPage extends StatelessWidget {
@@ -222,16 +223,7 @@ class _SessionViewState extends State<SessionView> {
   /// Rechtsklick: Auswahl kopieren, sonst einfügen.
   Future<void> _secondaryTap() async {
     final session = widget.session;
-    final selection = session.controller.selection;
-    if (selection != null) {
-      final text = session.terminal.buffer.getText(selection);
-      session.controller.clearSelection();
-      await Clipboard.setData(ClipboardData(text: text));
-      return;
-    }
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text;
-    if (text != null && text.isNotEmpty) session.terminal.paste(text);
+    if (!await copyTerminalSelection(session.terminal, session.controller)) await pasteIntoTerminal(session.terminal);
   }
 
   @override
@@ -294,6 +286,16 @@ class _SessionViewState extends State<SessionView> {
                       ),
                     ),
                   ),
+                  // Am Telefon gibt es weder Rechtsklick noch Tastenkürzel zum Kopieren.
+                  if (!_hardwareKeyboard && prompt == null)
+                    Positioned(
+                      top: 8,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: TerminalSelectionBar(terminal: session.terminal, controller: session.controller),
+                      ),
+                    ),
                   if (prompt != null)
                     Positioned.fill(
                       child: ColoredBox(

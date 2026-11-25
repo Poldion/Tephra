@@ -72,7 +72,10 @@ because the test expects to create the vault:
 flutter test integration_test -d emulator-5554 --dart-define=TEPHRA_TEST_HOST=10.0.2.2 --dart-define=TEPHRA_TEST_PORT=<port>
 ```
 
-The debug build is large (about 200 MB); the emulator needs enough free storage for it.
+The debug build is large (about 200 MB); the emulator needs enough free storage for it. On the first connection
+Android asks for the permission to show notifications; while that dialog is open, the app may not read the clipboard
+and the copy step fails. Grant it as soon as the test has installed the app:
+`adb shell pm grant io.github.poldion.tephra android.permission.POST_NOTIFICATIONS`.
 
 With `--dart-define=TEPHRA_TEST_SYNC=<address>` the test also creates an account on a sync server and uploads the
 vault; a second run with an empty vault path and `--dart-define=TEPHRA_TEST_JOIN=<address>` plays the second device

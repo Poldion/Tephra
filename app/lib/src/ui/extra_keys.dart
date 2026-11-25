@@ -7,9 +7,10 @@ import '../keys.dart';
 import '../session.dart';
 import '../text.dart';
 import 'common.dart';
+import 'terminal_selection.dart';
 
-/// Tasten, die der Bildschirmtastatur fehlen: Esc, Tab, Strg, Alt, Pfeile,
-/// häufige Zeichen und – hinter „Fn“ – die Funktionstasten.
+/// Tasten, die der Bildschirmtastatur fehlen: Esc, Tab, Strg, Alt, Einfügen aus
+/// der Zwischenablage, Pfeile, häufige Zeichen und – hinter „Fn“ – die Funktionstasten.
 ///
 /// Strg und Alt gelten für die nächste Taste; ein zweites Antippen stellt sie
 /// fest, ein drittes löst sie. Pfeile und Blättern wiederholen sich beim Halten.
@@ -52,6 +53,7 @@ class ExtraKeys extends StatelessWidget {
           modifier(t('Strg', 'Ctrl'), session.ctrl, session.cycleCtrl),
           modifier('Alt', session.alt, session.cycleAlt),
           _Key(label: 'Fn', onPress: session.toggleFunctionKeys, active: session.functionKeys),
+          _Key(label: t('Einfügen', 'Paste'), onPress: () => pasteIntoTerminal(session.terminal)),
           if (session.functionKeys)
             for (final (index, function) in _functionKeys.indexed) key('F${index + 1}', function)
           else ...[

@@ -34,8 +34,8 @@ The project is under active development. **What exists today:**
 - A first version of the graphical app for Windows, Linux and Android (folder `app/`): create and unlock the vault,
   manage hosts, identities, keys and WireGuard profiles, terminal sessions in tabs – direct, through jump hosts or
   through the tunnel – and a file browser over SFTP in every session. On Android with a bar of PC keys (Esc, Tab,
-  Ctrl, Alt, arrows, function keys) above the keyboard; open sessions stay connected while the app is in the
-  background. The app syncs with your sync server while the vault is open, so the phone and the desktop share one
+  Ctrl, Alt, arrows, function keys, paste) above the keyboard; touching and holding in the terminal selects text and
+  copies it; open sessions stay connected while the app is in the background. The app syncs with your sync server while the vault is open, so the phone and the desktop share one
   vault, and it can update itself from the releases on GitHub.
 
 **Not there yet:**
