@@ -121,8 +121,15 @@ es bekommt keine weiteren Änderungen. **Was es bereits abgeholt hat, bleibt dor
 ersetzt.** War das Master-Passwort schwach oder könnte es bekannt sein, müssen die Passwörter und Schlüssel der Hosts
 selbst erneuert werden – das Master-Passwort zu ändern hilft nicht.
 
-Noch nicht vorhanden: Entsperren über den Schlüsselspeicher des Betriebssystems oder Biometrie und automatisches
-Sperren des Dienstes nach einer Zeit ohne Nutzung.
+**Entsperren ohne Master-Passwort** (in der App eingeschaltet): Unter Windows liegt der Vault Key, verschlüsselt mit
+dem Windows-Konto, neben dem Tresor. Wer die Platte ausbaut, braucht zusätzlich das Kennwort dieses Kontos; wer am
+angemeldeten Konto sitzt oder darin Programme ausführt, kommt an den Vault Key. Unter Android liegt er verschlüsselt
+im privaten Ordner der App; der Schlüssel dazu steckt im Keystore des Telefons, verlässt ihn nicht und arbeitet nur,
+solange das Telefon entsperrt ist. Auf diesen Geräten schützt dann die Anmeldung am Gerät den Tresor, nicht mehr das
+Master-Passwort.
+
+Noch nicht vorhanden: Biometrie oder Windows Hello beim Entsperren und automatisches Sperren nach einer Zeit ohne
+Nutzung.
 
 ### Ein bösartiger oder übernommener SSH-Host
 

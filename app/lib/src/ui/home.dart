@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../device_unlock.dart';
 import '../mcp.dart';
 import '../rust/api/app.dart';
 import '../settings.dart';
@@ -9,6 +10,7 @@ import '../text.dart';
 import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
+import 'device_unlock_ui.dart';
 import 'logo.dart';
 import 'mcp_ui.dart';
 import 'sync_ui.dart';
@@ -124,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const UpdateSection(),
+        if (deviceUnlock.supported) const DeviceUnlockSection(),
       ],
     );
   }

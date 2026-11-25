@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../device_unlock.dart';
 import '../paths.dart';
 import '../rust/api/app.dart';
 import '../rust/api/sync.dart' show syncIsUnencrypted;
@@ -12,9 +13,13 @@ import 'sync_ui.dart';
 
 /// Anmeldung: Tresor anlegen, von einem Sync-Server abholen oder entsperren.
 class GateScreen extends StatefulWidget {
-  const GateScreen({super.key, required this.onUnlocked});
+  const GateScreen({super.key, required this.onUnlocked, this.autoUnlock = false});
 
   final VoidCallback onUnlocked;
+
+  /// Ob der Tresor ohne Zutun aufgeht, wenn dieses Gerät ihn ohne Passwort entsperren darf – beim Start der App,
+  /// nicht nach dem Sperren.
+  final bool autoUnlock;
 
   @override
   State<GateScreen> createState() => _GateScreenState();
@@ -37,6 +42,47 @@ class _GateScreenState extends State<GateScreen> {
   /// Nach dem Anlegen: der Wiederherstellungsschlüssel, der einmalig gezeigt wird.
   String? _recoveryKey;
   bool _noted = false;
+
+  /// Ob dieses Gerät den Tresor ohne Master-Passwort entsperren darf.
+  bool _onDevice = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_exists && deviceUnlock.supported) _checkDevice();
+  }
+
+  Future<void> _checkDevice() async {
+    if (!await deviceUnlock.refresh() || !mounted) return;
+    setState(() => _onDevice = true);
+    if (widget.autoUnlock) await _unlockOnDevice();
+  }
+
+  Future<void> _unlockOnDevice() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await deviceUnlock.unlock();
+      widget.onUnlocked();
+    } catch (error) {
+      // Ein Schlüssel, der nicht mehr passt oder sich nicht mehr öffnen lässt, wird nicht wieder versucht.
+      await deviceUnlock.disable();
+      if (mounted) {
+        setState(() {
+          _onDevice = false;
+          _error = t(
+            'Entsperren ohne Passwort ging nicht (${errorText(error)}). Es ist auf diesem Gerät jetzt abgeschaltet; gib das Master-Passwort ein und schalte es bei Bedarf unter „Über $appName“ wieder ein.',
+            'Unlocking without the password failed (${errorText(error)}). It is now switched off on this device; enter the master password and switch it on again under "About $appName" if you like.',
+          );
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -76,6 +122,8 @@ class _GateScreenState extends State<GateScreen> {
       _error = null;
     });
     try {
+      // Ein abgelegter Schlüssel gehört zu einem Tresor, den es hier nicht mehr gibt.
+      if (deviceUnlock.supported) await deviceUnlock.disable();
       await syncState.join(
         server: _server.text,
         username: _username.text,
@@ -123,6 +171,7 @@ class _GateScreenState extends State<GateScreen> {
         _password.clear();
         widget.onUnlocked();
       } else {
+        if (deviceUnlock.supported) await deviceUnlock.disable();
         final key = await createVault(path: _path, password: password);
         _password.clear();
         _repeat.clear();
@@ -189,10 +238,22 @@ class _GateScreenState extends State<GateScreen> {
         style: muted,
       ),
       const SizedBox(height: 20),
+      if (_exists && _onDevice) ...[
+        FilledButton.tonalIcon(
+          key: const Key('gate-device-unlock'),
+          icon: const Icon(Icons.lock_open_rounded),
+          label: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(t('Ohne Passwort entsperren', 'Unlock without the password')),
+          ),
+          onPressed: _busy ? null : _unlockOnDevice,
+        ),
+        const SizedBox(height: 16),
+      ],
       SecretField(
         controller: _password,
         label: t('Master-Passwort', 'Master password'),
-        autofocus: true,
+        autofocus: !_onDevice,
         enabled: !_busy,
         onSubmitted: (_) => _exists ? _submit() : null,
       ),

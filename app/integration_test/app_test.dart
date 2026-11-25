@@ -41,6 +41,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:tephra/main.dart';
+import 'package:tephra/src/device_unlock.dart';
 import 'package:tephra/src/mcp.dart';
 import 'package:tephra/src/paths.dart';
 import 'package:tephra/src/rust/api/app.dart';
@@ -51,6 +52,7 @@ import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
 import 'package:tephra/src/settings.dart';
 import 'package:tephra/src/text.dart';
+import 'package:tephra/src/ui/device_unlock_ui.dart';
 import 'package:tephra/src/ui/sync_ui.dart' show plainHttpRefused;
 import 'package:tephra/src/ui/terminal_page.dart';
 import 'package:tephra/src/update.dart';
@@ -169,6 +171,52 @@ Future<void> _joinDevice(WidgetTester tester) async {
   // Der Tresor lässt sich mit dem Master-Passwort des Kontos sperren und wieder öffnen.
   await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
   await _appears(tester, find.text(t('Tresor entsperren', 'Unlock vault')));
+  await _type(tester, find.byType(TextField).first, _password);
+  await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
+  await _appears(tester, find.text('Testserver'));
+}
+
+/// Schaltet im Dialog „Über Tephra“ das Entsperren ohne Passwort ein oder aus.
+Future<void> _setDeviceUnlock(WidgetTester tester, bool on) async {
+  await _tap(tester, find.byTooltip(t('Über $appName', 'About $appName')));
+  await _appears(tester, find.byKey(const Key('device-unlock-switch')));
+  await tester.ensureVisible(find.byKey(const Key('device-unlock-switch')));
+  await _tap(tester, find.byKey(const Key('device-unlock-switch')));
+  if (on) await _tap(tester, find.widgetWithText(FilledButton, t('Einschalten', 'Switch on')));
+  await _until(tester, () => deviceUnlock.enabled == on, on ? 'eingeschaltet' : 'ausgeschaltet');
+  Navigator.of(tester.element(find.byType(DeviceUnlockSection))).pop();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+/// Entsperren ohne Master-Passwort: per Knopf nach dem Sperren, von selbst beim Start der App.
+Future<void> _deviceUnlock(WidgetTester tester) async {
+  _step('ohne Passwort entsperren');
+  await _setDeviceUnlock(tester, true);
+  await _shot(tester, '13-ohne-passwort');
+
+  // Nach dem Sperren geht der Tresor nicht von selbst auf, aber mit einem Knopfdruck.
+  await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
+  await _appears(tester, find.byKey(const Key('gate-device-unlock')));
+  await tester.pump(const Duration(seconds: 1));
+  expect(isUnlocked(), isFalse);
+  await _shot(tester, '13-sperre-ohne-passwort');
+  await _tap(tester, find.byKey(const Key('gate-device-unlock')));
+  await _appears(tester, find.text('Testserver'));
+  expect(isUnlocked(), isTrue);
+
+  // Beim Start der App geht er von selbst auf.
+  await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
+  await _appears(tester, find.byKey(const Key('gate-device-unlock')));
+  await tester.pumpWidget(const SizedBox());
+  await tester.pumpWidget(const TerminalApp());
+  await _appears(tester, find.text('Testserver'));
+  expect(isUnlocked(), isTrue);
+
+  // Ausgeschaltet braucht es wieder das Master-Passwort.
+  await _setDeviceUnlock(tester, false);
+  await _tap(tester, find.byTooltip(t('Tresor sperren', 'Lock vault')));
+  await _appears(tester, find.text(t('Tresor entsperren', 'Unlock vault')));
+  expect(find.byKey(const Key('gate-device-unlock')), findsNothing);
   await _type(tester, find.byType(TextField).first, _password);
   await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
   await _appears(tester, find.text('Testserver'));
@@ -579,6 +627,9 @@ void main() {
     await _until(tester, () => _screen(session).contains('bereit>'), 'Eingabeaufforderung');
     await _tap(tester, find.byTooltip(t('Sitzung schließen', 'Close session')));
     await _appears(tester, find.text(t('Keine offenen Sitzungen', 'No open sessions')));
+
+    // ---- Entsperren ohne Master-Passwort (Windows und Android)
+    if (deviceUnlock.supported) await _deviceUnlock(tester);
 
     // ---- MCP: Dienst der App, Client, Freigabe, Rückfragen über die echte Brücke
     if (_cli.isNotEmpty) await _mcp(tester);

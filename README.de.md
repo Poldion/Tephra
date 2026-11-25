@@ -46,7 +46,8 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 **Noch nicht vorhanden:**
 
 - In der App fehlen noch Snippets, Portweiterleitungen, das Übertragen ganzer Ordner, das Ändern des
-  Master-Passworts, die Wiederherstellung mit dem Wiederherstellungsschlüssel und das automatische Sperren; dafür gibt
+  Master-Passworts, die Wiederherstellung mit dem Wiederherstellungsschlüssel, das automatische Sperren und unter
+  Linux das Entsperren ohne Passwort; dafür gibt
   es die Kommandozeile, die unter Windows und Linux denselben Tresor verwendet. Unter Linux wird die App bisher nur
   vom automatischen App-Test geprüft; an einem echten Desktop hat noch niemand damit gearbeitet. Die Android-Fassung
   ist bisher nur im Emulator erprobt.

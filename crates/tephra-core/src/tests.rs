@@ -374,3 +374,27 @@ async fn host_hinter_vpn_profil() {
     assert_eq!(closed, 1, "Tunnel wurde nach Verbindungsende nicht frei");
     assert!(core.tunnel_states().await.is_empty());
 }
+
+#[tokio::test]
+async fn entsperren_mit_dem_schluessel_des_geraets() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let path = dir.path().join("t.tephra");
+    let (core, _) = Core::create(&path, "erstes passwort", KdfParams::INSECURE_FOR_TESTS).expect("tresor");
+    let host = add_host(&core, "web", 22, |_| {});
+    let key = core.vault_key().expect("schlüssel");
+
+    // Auch nach einem neuen Master-Passwort passt der abgelegte Schlüssel noch.
+    core.with_vault(|v| v.change_password("neues passwort", KdfParams::INSECURE_FOR_TESTS)).expect("passwort ändern");
+    core.lock().await;
+    let reopened = Core::open(&path).expect("öffnen");
+    reopened.unlock_with_key(key).expect("mit dem Schlüssel entsperren");
+    assert_eq!(reopened.with_vault(|v| v.get::<Host>(host)).expect("lesen").expect("host").label, "web");
+
+    // Der Schlüssel eines anderen Tresors öffnet diesen nicht.
+    let other_path = dir.path().join("anderer.tephra");
+    let (other, _) = Core::create(&other_path, "pw", KdfParams::INSECURE_FOR_TESTS).expect("tresor");
+    let foreign = other.vault_key().expect("schlüssel");
+    reopened.lock().await;
+    assert!(reopened.unlock_with_key(foreign).is_err());
+    assert!(!reopened.is_unlocked());
+}

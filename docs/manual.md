@@ -77,6 +77,17 @@ tephra --vault ~/work.tephra host list
 **Unlocking.** Every command asks for the master password (`Master-Passwort:`) and locks the vault again when it
 ends. Only `tephra daemon` keeps it unlocked.
 
+**Unlocking without the master password (app, Windows and Android).** In the dialog "About Tephra", "Unlock without the
+master password" switches this on for that device. The app then keeps the key of the vault protected on this device:
+on Windows encrypted with your Windows account (data protection API, file `vault.tephra.device-unlock` next to the
+vault), on Android in the phone's key store, usable only while the phone is unlocked. At start the app then opens the
+vault by itself; after locking, the button "Unlock without the password" is enough. The master password stays valid,
+and changing it on another device does not interfere, because the key of the vault stays the same. Every device decides
+for itself; the setting is not synced. On this device the protection of the vault then depends on your Windows account
+or on the lock of the phone: whoever gets past that gets to all credentials. If unlocking fails once – for example
+because the vault was replaced or the lock of the phone was removed – the app switches it off on this device and asks
+for the password again. Not available on Linux yet.
+
 **Backup.** `tephra export backup.tephra` writes a copy that is still encrypted with the same master password and
 recovery key. It contains your hosts, identities, keys, VPN profiles, snippets and known host keys, but nothing that
 belongs to one device: no keys marked `--local-only`, no sync session, no MCP clients or grants, no audit log. To

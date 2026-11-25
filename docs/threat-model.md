@@ -114,8 +114,13 @@ further changes. **What it has already fetched stays on it, and the vault key is
 password was weak or might be known, change the passwords and keys of the hosts themselves – changing the master
 password does not help.
 
-Not there yet: unlocking through the operating system's key store or biometrics, and automatic locking of the daemon
-after a period of inactivity.
+**Unlocking without the master password** (switched on in the app): on Windows the vault key, encrypted with the
+Windows account, lies next to the vault. Whoever removes the disk additionally needs the password of that account;
+whoever sits at the signed-in account or runs programs in it gets to the vault key. On Android it lies encrypted in the
+app's private folder; the key for that sits in the phone's key store, never leaves it and only works while the phone
+is unlocked. On these devices the sign-in to the device then protects the vault, no longer the master password.
+
+Not there yet: biometrics or Windows Hello when unlocking, and automatic locking after a period of inactivity.
 
 ### A malicious or compromised SSH host
 

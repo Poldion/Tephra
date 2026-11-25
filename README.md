@@ -41,7 +41,7 @@ The project is under active development. **What exists today:**
 **Not there yet:**
 
 - The app still lacks snippets, port forwarding, transferring whole folders, changing the master
-  password, recovery with the recovery key and automatic locking; the command line covers these and, on Windows and
+  password, recovery with the recovery key, automatic locking and unlocking without the password on Linux; the command line covers these and, on Windows and
   Linux, uses the same vault. On Linux the app is exercised by the automated app test only; nobody has worked with it
   on a real desktop yet. The Android version has only been tried in the emulator so far.
 - Remote port forwarding, login through an SSH agent and VPN protocols other than WireGuard.

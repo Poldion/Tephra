@@ -13,7 +13,7 @@ pub use connect::{ConnectUi, HostKeyQuestion, HostKeyState, NonInteractive, Reso
 pub use import::{ImportReport, SshConfigHost, parse_ssh_config};
 pub use tunnels::TunnelState;
 
-pub use tephra_crypto::{KdfParams, RecoveryKey};
+pub use tephra_crypto::{KdfParams, RecoveryKey, VaultKey};
 pub use tephra_model as model;
 pub use tephra_ssh as ssh;
 pub use tephra_transport as transport;
@@ -112,6 +112,20 @@ impl Core {
 
     pub fn unlock(&self, password: &str) -> Result<()> {
         Ok(self.vault_guard().unlock(password)?)
+    }
+
+    /// Entsperrt mit dem Vault Key selbst, etwa aus dem geschützten
+    /// Speicher dieses Geräts. Ein Schlüssel, der nicht zu diesem Tresor
+    /// gehört, wird abgelehnt, bevor er irgendetwas versiegelt.
+    pub fn unlock_with_key(&self, key: VaultKey) -> Result<()> {
+        Ok(self.vault_guard().unlock_with_key(key)?)
+    }
+
+    /// Kopie des Vault Keys des entsperrten Tresors, um ihn geschützt auf
+    /// diesem Gerät abzulegen. Er bleibt gleich, wenn das Master-Passwort
+    /// geändert wird.
+    pub fn vault_key(&self) -> Result<VaultKey> {
+        Ok(self.vault_guard().vault_key()?)
     }
 
     /// Sperrt den Tresor und beendet alle Verbindungen und Tunnel, damit

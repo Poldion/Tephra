@@ -104,6 +104,21 @@ class MainActivity : FlutterActivity() {
                         runOnUiThread { result.error("certificates", error.message, null) }
                     }
                 }
+                // Entsperren ohne Master-Passwort, siehe DeviceUnlock. Der Keystore kann dauern, deshalb
+                // nicht im Hauptthread.
+                "deviceUnlockStored", "deviceUnlockSave", "deviceUnlockLoad", "deviceUnlockForget" -> thread {
+                    try {
+                        val answer: Any? = when (call.method) {
+                            "deviceUnlockStored" -> DeviceUnlock.stored(this)
+                            "deviceUnlockSave" -> DeviceUnlock.save(this, call.argument<ByteArray>("key")!!)
+                            "deviceUnlockLoad" -> DeviceUnlock.load(this)
+                            else -> DeviceUnlock.forget(this)
+                        }
+                        runOnUiThread { result.success(if (answer is Unit) null else answer) }
+                    } catch (error: Exception) {
+                        runOnUiThread { result.error("deviceUnlock", error.message ?: error.javaClass.simpleName, null) }
+                    }
+                }
                 // Solange Sitzungen offen sind, läuft ein Dienst mit Benachrichtigung; ohne ihn schließt
                 // Android die Verbindungen, sobald die App ein paar Sekunden im Hintergrund ist.
                 "keepSessions" -> {

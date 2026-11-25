@@ -7,6 +7,7 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api/app.dart';
+import 'api/device_unlock.dart';
 import 'api/files.dart';
 import 'api/mcp.dart';
 import 'api/sync.dart';

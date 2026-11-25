@@ -68,6 +68,9 @@ class _RootState extends State<Root> {
   final _state = AppState();
   late bool _unlocked = isUnlocked();
 
+  /// Ohne Passwort geht der Tresor nur beim Start von selbst auf, nicht nach dem Sperren.
+  bool _startedUp = false;
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +87,7 @@ class _RootState extends State<Root> {
   }
 
   Future<void> _lock() async {
+    _startedUp = true;
     _state.closeAll();
     syncState.stop();
     mcpState.stop();
@@ -104,7 +108,7 @@ class _RootState extends State<Root> {
   @override
   Widget build(BuildContext context) {
     if (!_unlocked) {
-      return GateScreen(onUnlocked: _onUnlocked);
+      return GateScreen(onUnlocked: _onUnlocked, autoUnlock: !_startedUp);
     }
     return McpApprovals(
       child: HomeScreen(state: _state, onLock: _lock),

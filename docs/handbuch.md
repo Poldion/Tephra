@@ -78,6 +78,18 @@ tephra --vault ~/arbeit.tephra host list
 **Entsperren.** Jeder Befehl fragt nach dem Master-Passwort und sperrt den Tresor wieder, wenn er endet. Nur
 `tephra daemon` hält ihn entsperrt.
 
+**Ohne Master-Passwort entsperren (App, Windows und Android).** Im Dialog „Über Tephra“ schaltet „Ohne
+Master-Passwort entsperren“ das für das jeweilige Gerät ein. Die App legt dann den Schlüssel des Tresors geschützt
+auf diesem Gerät ab: unter Windows verschlüsselt mit deinem Windows-Konto (Datenschutz-API, Datei
+`vault.tephra.device-unlock` neben dem Tresor), unter Android im Keystore des Telefons, nutzbar nur, solange das
+Telefon entsperrt ist. Beim Start öffnet die App den Tresor dann von selbst; nach dem Sperren genügt der Knopf „Ohne
+Passwort entsperren“. Das Master-Passwort bleibt gültig, und eine Änderung des Passworts auf einem anderen Gerät stört
+nicht, weil der Schlüssel des Tresors gleich bleibt. Jedes Gerät entscheidet für sich; abgeglichen wird die Einstellung
+nicht. Damit hängt der Schutz des Tresors auf diesem Gerät an deinem Windows-Konto beziehungsweise an der Sperre des
+Telefons: Wer daran kommt, kommt an alle Zugänge. Geht das Entsperren einmal nicht – etwa weil der Tresor ersetzt
+wurde oder die Sperre des Telefons entfernt wurde –, schaltet die App es auf diesem Gerät ab und fragt wieder nach dem
+Passwort. Unter Linux gibt es das noch nicht.
+
 **Sicherung.** `tephra export sicherung.tephra` schreibt eine Kopie, die weiterhin mit demselben Master-Passwort und
 Wiederherstellungsschlüssel verschlüsselt ist. Sie enthält Hosts, Identitäten, Schlüssel, VPN-Profile, Snippets und
 bekannte Hostschlüssel, aber nichts, das zu einem einzelnen Gerät gehört: keine Schlüssel mit `--local-only`, keine

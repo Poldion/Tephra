@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] – 2026-11-25
+
+### Added
+
+- **Unlocking without the master password (app on Windows and Android):** "Unlock without the master password" in the
+  dialog "About Tephra" switches it on for that device. On Windows the key of the vault is then kept encrypted with
+  your Windows account, on Android in the phone's key store, usable only while the phone is unlocked. At start the app
+  opens the vault by itself; after locking, one button unlocks it again. The master password stays valid, and changing
+  it on another device does not interfere. The setting belongs to the device and is not synced; if unlocking fails,
+  the app switches it off on that device and asks for the password.
+
 ## [0.7.0] – 2026-11-25
 
 ### Added
