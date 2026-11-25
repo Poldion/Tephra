@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +14,7 @@ import android.view.View
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.security.KeyStore
@@ -30,6 +33,9 @@ class MainActivity : FlutterActivity() {
     /// Ob in diesem Lauf schon nach der Erlaubnis für Benachrichtigungen gefragt wurde.
     private var askedNotifications = false
 
+    /// Beobachtet das Netz, solange die Oberfläche zuhört.
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Ohne das zeichnet Android nach Tastatureingaben einen Fokusrahmen um die ganze App.
@@ -41,6 +47,12 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        // Meldet jeden Wechsel des Standardnetzes; die Oberfläche prüft dann ihre Verbindungen.
+        EventChannel(messenger, "tephra/network").setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink) = watchNetwork(events)
+            override fun onCancel(arguments: Any?) = unwatchNetwork()
+        })
 
         // Private Ordner der App: Daten (dort liegt der Tresor) und Zwischendateien.
         MethodChannel(messenger, "tephra/paths").setMethodCallHandler { call, result ->
@@ -135,6 +147,40 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun watchNetwork(events: EventChannel.EventSink) {
+        unwatchNetwork()
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            // Beim Anmelden meldet Android das aktuelle Netz gleich einmal; das ist noch kein Wechsel.
+            private var current: Network? = manager.activeNetwork
+
+            override fun onAvailable(network: Network) {
+                if (network == current) return
+                current = network
+                runOnUiThread { events.success(null) }
+            }
+
+            override fun onLost(network: Network) {
+                if (network == current) current = null
+            }
+        }
+        try {
+            manager.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (error: Exception) {
+            // Ohne Meldungen bemerken die Lebenszeichen einen Abbruch etwas später.
+        }
+    }
+
+    private fun unwatchNetwork() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
+        } catch (error: Exception) {
+        }
+    }
+
     private fun keepSessions(count: Int, title: String, text: String, channel: String) {
         if (count <= 0) {
             if (keeping == null) return
@@ -173,6 +219,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        unwatchNetwork()
         // Endet die App wirklich, enden ihre Sitzungen; dann bleibt auch der Dienst nicht.
         if (isFinishing && keeping != null) {
             keeping = null

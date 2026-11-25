@@ -19,6 +19,10 @@
 // legt einen Client an, gibt ihm den Host frei und startet die echte Brücke `tephra mcp serve`:
 // Ein Befehl wird im Dialog der App bestätigt, ein zweiter abgelehnt.
 //
+// Mit `--dart-define=TEPHRA_TEST_SSHD=<Host>:<Port>:<Benutzer>:<Passwort>` prüft er „Sitzung halten“ gegen einen
+// echten SSH-Server mit tmux: Die Verbindung läuft über einen Zwischenverteiler im Test, der sie kappt und
+// einfriert; die App muss sich jedes Mal wieder an dieselbe tmux-Sitzung hängen.
+//
 // Auf einem Android-Emulator erreicht die App den Testserver des Rechners
 // unter 10.0.2.2; der Tresor liegt im Datenordner der App und muss fehlen
 // (App vorher deinstallieren):
@@ -67,6 +71,7 @@ const _update = bool.fromEnvironment('TEPHRA_TEST_UPDATE');
 const _sync = String.fromEnvironment('TEPHRA_TEST_SYNC');
 const _join = String.fromEnvironment('TEPHRA_TEST_JOIN');
 const _cli = String.fromEnvironment('TEPHRA_TEST_CLI');
+const _sshd = String.fromEnvironment('TEPHRA_TEST_SSHD');
 const _account = 'tester';
 const _password = 'ein langes Master-Passwort';
 
@@ -114,6 +119,124 @@ Future<void> _type(WidgetTester tester, Finder finder, String text) async {
 void _step(String name) => debugPrint('Abschnitt: $name');
 
 String _screen(TerminalSession session) => session.terminal.buffer.getText();
+
+/// Leitet Verbindungen an einen SSH-Server weiter und kann sie kappen oder einfrieren, wie ein Funkloch oder
+/// ein Wechsel vom WLAN ins Mobilnetz.
+class _Relay {
+  _Relay._(this._server, this._host, this._port) {
+    _server.listen((client) async {
+      try {
+        final server = await Socket.connect(_host, _port);
+        final pair = (client, server, <StreamSubscription<Uint8List>>[]);
+        pair.$3.add(client.listen(server.add, onDone: server.destroy, onError: (Object _) => server.destroy()));
+        pair.$3.add(server.listen(client.add, onDone: client.destroy, onError: (Object _) => client.destroy()));
+        _pairs.add(pair);
+      } catch (_) {
+        client.destroy();
+      }
+    });
+  }
+
+  static Future<_Relay> start(String host, int port) async =>
+      _Relay._(await ServerSocket.bind(InternetAddress.loopbackIPv4, 0), host, port);
+
+  final ServerSocket _server;
+  final String _host;
+  final int _port;
+  final _pairs = <(Socket, Socket, List<StreamSubscription<Uint8List>>)>[];
+
+  int get port => _server.port;
+
+  /// Bricht alle Verbindungen hart ab.
+  void cut() {
+    for (final (client, server, _) in _pairs) {
+      client.destroy();
+      server.destroy();
+    }
+    _pairs.clear();
+  }
+
+  /// Hält alle bestehenden Verbindungen an, ohne sie zu schließen: Es kommt einfach nichts mehr an.
+  void freeze() {
+    for (final (_, _, subscriptions) in _pairs) {
+      for (final subscription in subscriptions) {
+        subscription.pause();
+      }
+    }
+  }
+
+  Future<void> close() async {
+    cut();
+    await _server.close();
+  }
+}
+
+/// „Sitzung halten“: Shell in tmux, Abbruch, Wiederverbinden an dieselbe Sitzung.
+Future<void> _keepSession(WidgetTester tester) async {
+  _step('Sitzung halten');
+  final [host, port, user, password] = _sshd.split(':');
+  final relay = await _Relay.start(host, int.parse(port));
+  final identity = saveIdentity(
+    input: IdentityInput(label: 'tmux', username: user, method: 'password', password: password),
+  );
+  final hostId = saveHost(
+    input: HostInput(
+      label: 'Mit tmux',
+      address: '127.0.0.1',
+      port: relay.port,
+      identityId: identity,
+      jumpHostIds: const [],
+      tags: const [],
+      notes: '',
+      favorite: false,
+      startupCommand: '',
+      keepSession: true,
+    ),
+  );
+  final view = listHosts().firstWhere((h) => h.id == hostId);
+  expect(view.keepSession, isTrue);
+  final session = TerminalSession(view, slot: 3);
+  try {
+    await _until(tester, () => session.prompt is SessionEvent_HostKey, 'Hostschlüssel');
+    session.answerHostKey(true);
+    await _until(tester, () => session.state == SessionState.connected, 'Verbindung');
+    session.terminal.textInput('echo "tmux: #\$(tmux display-message -p \'#S\')" "marke-\$((6*7))"\r');
+    await _until(tester, () => _screen(session).contains('tmux: #tephra-3 marke-42'), 'Ausgabe in tmux');
+    expect(session.terminal.isUsingAltBuffer, isTrue, reason: 'tmux zeichnet im Vollbild');
+
+    _step('Sitzung halten: Verbindung gekappt');
+    relay.cut();
+    await _until(tester, () => session.reconnecting, 'neuer Versuch');
+    await _until(tester, () => session.state == SessionState.connected, 'wieder verbunden');
+    // Dieselbe Sitzung: tmux zeichnet die Ausgabe von vorhin neu.
+    await _until(tester, () => _screen(session).contains('marke-42'), 'alte Ausgabe nach dem Abbruch');
+    expect(_screen(session), isNot(contains(t('Verbindung getrennt', 'Connection lost'))));
+
+    _step('Sitzung halten: Verbindung eingefroren');
+    relay.freeze();
+    final started = DateTime.now();
+    await session.checkConnection();
+    expect(session.reconnecting, isTrue, reason: 'die Prüfung bemerkt die tote Verbindung');
+    expect(DateTime.now().difference(started), lessThan(const Duration(seconds: 10)));
+    await _until(tester, () => session.state == SessionState.connected, 'wieder verbunden nach dem Einfrieren');
+    await _until(tester, () => _screen(session).contains('marke-42'), 'alte Ausgabe nach dem Einfrieren');
+    // Eine stehende Verbindung übersteht die Prüfung.
+    await session.checkConnection();
+    expect(session.state, SessionState.connected);
+
+    _step('Sitzung halten: Shell beendet');
+    session.terminal.textInput('exit\r');
+    await _until(tester, () => session.state == SessionState.closed, 'Sitzungsende');
+    await tester.pump(const Duration(seconds: 3));
+    expect(session.state, SessionState.closed, reason: 'nach einem Exit wird nicht neu verbunden');
+    expect(session.reconnecting, isFalse);
+  } finally {
+    session.close();
+    await relay.close();
+    deleteItem(id: hostId);
+    deleteItem(id: identity);
+  }
+}
 
 /// Wartet im Dialog des Abgleichs, bis er einen abgeschlossenen Abgleich mit `server` meldet.
 Future<void> _syncDone(WidgetTester tester, String server) async {
@@ -627,6 +750,9 @@ void main() {
     await _until(tester, () => _screen(session).contains('bereit>'), 'Eingabeaufforderung');
     await _tap(tester, find.byTooltip(t('Sitzung schließen', 'Close session')));
     await _appears(tester, find.text(t('Keine offenen Sitzungen', 'No open sessions')));
+
+    // ---- Sitzung halten: tmux auf einem echten SSH-Server, Abbruch und Wiederverbinden
+    if (_sshd.isNotEmpty) await _keepSession(tester);
 
     // ---- Entsperren ohne Master-Passwort (Windows und Android)
     if (deviceUnlock.supported) await _deviceUnlock(tester);

@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] – 2026-11-25
+
+### Added
+
+- **Sessions that survive a dropped connection:** a new switch "Keep the session on the host (tmux)" in the host
+  editor. The terminal then runs in tmux on the host (one tmux session `tephra-<n>` per tab). If the connection
+  drops, everything keeps running there – Claude Code, builds, long commands – and the app reattaches to the same
+  session. Swiping in the terminal scrolls through its history. Without tmux on the host the app says so and opens
+  the normal shell. `tephra ssh` attaches to `tephra-1` of such a host.
+- **Reconnecting by itself:** if an open session loses its connection, the app reconnects with growing pauses (from
+  one second up to half a minute, for about eight minutes), and the status bar shows when it tries next and offers
+  "Connect now". On Android a switch between Wi-Fi and mobile data, or the network coming back, starts the next try
+  at once; when the app comes back to the foreground it checks its connections and replaces dead ones within a
+  few seconds instead of waiting for the keepalive.
+- **Command after login** in the host editor of the app (the vault field already existed for the command line).
+
+### Changed
+
+- SSH keepalives every 15 instead of 30 seconds, so a dead connection is noticed sooner.
+
 ## [0.8.0] – 2026-11-25
 
 ### Added

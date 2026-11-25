@@ -114,7 +114,7 @@ impl ConnectOptions {
             port,
             username: username.into(),
             credentials: Vec::new(),
-            keepalive: Some(Duration::from_secs(30)),
+            keepalive: Some(Duration::from_secs(15)),
             handshake_timeout: Duration::from_secs(30),
         }
     }
@@ -291,6 +291,17 @@ impl SshClient {
 
     pub fn is_closed(&self) -> bool {
         self.handle.is_closed()
+    }
+
+    /// Fragt den Server, ob die Verbindung noch steht. `false`, wenn er nicht innerhalb von `timeout`
+    /// antwortet. Nach einem Netzwechsel bemerkt das eine tote Verbindung sofort statt erst nach den
+    /// Lebenszeichen.
+    pub async fn ping(&self, timeout: Duration) -> bool {
+        if self.handle.is_closed() {
+            return false;
+        }
+        // russh meldet auch dann Erfolg, wenn die Verbindung beim Warten endet; deshalb danach noch einmal prüfen.
+        matches!(tokio::time::timeout(timeout, self.handle.send_ping()).await, Ok(Ok(()))) && !self.handle.is_closed()
     }
 
     /// Führt einen einzelnen Befehl aus und sammelt seine Ausgabe.

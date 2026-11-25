@@ -130,6 +130,10 @@ pub struct HostView {
     pub tags: Vec<String>,
     pub notes: String,
     pub favorite: bool,
+    /// Befehl, der nach dem Anmelden statt der Login-Shell läuft.
+    pub startup_command: String,
+    /// Terminalsitzungen laufen auf dem Host in tmux und überstehen einen Verbindungsabbruch.
+    pub keep_session: bool,
 }
 
 pub struct HostInput {
@@ -144,6 +148,8 @@ pub struct HostInput {
     pub tags: Vec<String>,
     pub notes: String,
     pub favorite: bool,
+    pub startup_command: String,
+    pub keep_session: bool,
 }
 
 #[frb(sync)]
@@ -164,6 +170,8 @@ pub fn list_hosts() -> Result<Vec<HostView>> {
             tags: host.tags,
             notes: host.notes,
             favorite: host.favorite,
+            startup_command: host.startup_command.unwrap_or_default(),
+            keep_session: host.keep_session,
         });
     }
     hosts.sort_by(|a, b| b.favorite.cmp(&a.favorite).then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase())));
@@ -192,6 +200,8 @@ pub fn save_host(input: HostInput) -> Result<String> {
     host.tags = input.tags.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
     host.notes = input.notes;
     host.favorite = input.favorite;
+    host.startup_command = Some(input.startup_command.trim().to_string()).filter(|c| !c.is_empty());
+    host.keep_session = input.keep_session;
     let id = match existing {
         Some(id) => {
             core.with_vault(|v| v.update(id, &host))?;
@@ -489,14 +499,17 @@ pub fn answer_texts(request_id: u32, texts: Option<Vec<String>>) {
 /// Öffnet eine Terminalsitzung zu einem Host. Die Verbindung wird im
 /// Hintergrund aufgebaut; alles Weitere kommt als Ereignis, zuerst
 /// [`SessionEvent::Opened`] mit der Kennung der Sitzung.
-pub fn open_session(host_id: String, cols: u32, rows: u32, sink: StreamSink<SessionEvent>) -> Result<()> {
+///
+/// `slot` unterscheidet mehrere Terminals zum selben Host (ab 1); bei Hosts mit „Sitzung halten“ hängt jedes an
+/// seiner eigenen tmux-Sitzung, und dieselbe Nummer findet sie nach einem Abbruch wieder.
+pub fn open_session(host_id: String, slot: u32, cols: u32, rows: u32, sink: StreamSink<SessionEvent>) -> Result<()> {
     let host_id = parse_id(&host_id)?;
     let core = core()?;
     let session_id = next_id();
     let sink = std::sync::Arc::new(sink);
     let _ = sink.add(SessionEvent::Opened { session_id });
     let task = RUNTIME.spawn(async move {
-        let result = run_session(core, host_id, session_id, cols, rows, &sink).await;
+        let result = run_session(core, host_id, session_id, slot, cols, rows, &sink).await;
         {
             let mut app = app();
             app.sessions.remove(&session_id);
@@ -524,13 +537,23 @@ pub async fn session_resize(session_id: u32, cols: u32, rows: u32) -> Result<()>
     Ok(())
 }
 
+/// Prüft, ob die Verbindung einer Sitzung noch antwortet, etwa nach einem Netzwechsel: `false`, wenn sie
+/// nicht binnen `timeout_ms` antwortet oder die Sitzung schon beendet ist.
+pub async fn session_check(session_id: u32, timeout_ms: u32) -> Result<bool> {
+    let Some(client) = app().sessions.get(&session_id).map(|(_, client)| client.clone()) else {
+        return Ok(false);
+    };
+    let timeout = std::time::Duration::from_millis(u64::from(timeout_ms));
+    Ok(RUNTIME.spawn(async move { client.ping(timeout).await }).await?)
+}
+
 pub async fn session_close(session_id: u32) -> Result<()> {
     let (input, task) = {
         let mut app = app();
         (app.sessions.remove(&session_id), app.tasks.remove(&session_id))
     };
     if let Some(input) = input {
-        let _ = RUNTIME.spawn(async move { input.close().await }).await;
+        let _ = RUNTIME.spawn(async move { input.0.close().await }).await;
     }
     // Bricht auch einen Verbindungsaufbau ab, der noch auf eine Antwort wartet.
     if let Some(task) = task {

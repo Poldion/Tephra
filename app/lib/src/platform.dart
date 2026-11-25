@@ -10,6 +10,14 @@ import 'text.dart';
 const _paths = MethodChannel('tephra/paths');
 const _files = MethodChannel('tephra/files');
 const _system = MethodChannel('tephra/system');
+const _network = EventChannel('tephra/network');
+
+/// Meldet unter Android jeden Wechsel des Netzes, über das die App ins Internet geht (WLAN ↔ Mobilnetz, Netz
+/// wieder da nach einem Funkloch).
+Stream<void> networkChanges() {
+  if (!Platform.isAndroid) return const Stream.empty();
+  return _network.receiveBroadcastStream().map<void>((_) {}).handleError((Object _) {});
+}
 
 /// Ordner für Zwischendateien, die jederzeit gelöscht werden dürfen.
 Future<String> cacheDir() async {

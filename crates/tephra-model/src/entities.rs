@@ -29,6 +29,8 @@ pub struct Host {
     pub proxy: Option<Proxy>,
     /// Befehl, der nach dem Anmelden ausgeführt wird.
     pub startup_command: Option<String>,
+    /// Terminalsitzungen laufen auf dem Host in tmux und überstehen so einen Verbindungsabbruch.
+    pub keep_session: bool,
     pub forwards: Vec<PortForward>,
     pub keepalive_secs: Option<u32>,
     pub notes: String,
@@ -48,6 +50,7 @@ impl Default for Host {
             jump_host_ids: Vec::new(),
             proxy: None,
             startup_command: None,
+            keep_session: false,
             forwards: Vec::new(),
             keepalive_secs: None,
             notes: String::new(),

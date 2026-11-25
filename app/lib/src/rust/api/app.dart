@@ -106,12 +106,17 @@ void answerTexts({required int requestId, List<String>? texts}) => RustLib
 /// Öffnet eine Terminalsitzung zu einem Host. Die Verbindung wird im
 /// Hintergrund aufgebaut; alles Weitere kommt als Ereignis, zuerst
 /// [`SessionEvent::Opened`] mit der Kennung der Sitzung.
+///
+/// `slot` unterscheidet mehrere Terminals zum selben Host (ab 1); bei Hosts mit „Sitzung halten“ hängt jedes an
+/// seiner eigenen tmux-Sitzung, und dieselbe Nummer findet sie nach einem Abbruch wieder.
 Stream<SessionEvent> openSession({
   required String hostId,
+  required int slot,
   required int cols,
   required int rows,
 }) => RustLib.instance.api.crateApiAppOpenSession(
   hostId: hostId,
+  slot: slot,
   cols: cols,
   rows: rows,
 );
@@ -133,6 +138,14 @@ Future<void> sessionResize({
   rows: rows,
 );
 
+/// Prüft, ob die Verbindung einer Sitzung noch antwortet, etwa nach einem Netzwechsel: `false`, wenn sie
+/// nicht binnen `timeout_ms` antwortet oder die Sitzung schon beendet ist.
+Future<bool> sessionCheck({required int sessionId, required int timeoutMs}) =>
+    RustLib.instance.api.crateApiAppSessionCheck(
+      sessionId: sessionId,
+      timeoutMs: timeoutMs,
+    );
+
 Future<void> sessionClose({required int sessionId}) =>
     RustLib.instance.api.crateApiAppSessionClose(sessionId: sessionId);
 
@@ -148,6 +161,8 @@ class HostInput {
   final List<String> tags;
   final String notes;
   final bool favorite;
+  final String startupCommand;
+  final bool keepSession;
 
   const HostInput({
     this.id,
@@ -160,6 +175,8 @@ class HostInput {
     required this.tags,
     required this.notes,
     required this.favorite,
+    required this.startupCommand,
+    required this.keepSession,
   });
 
   @override
@@ -173,7 +190,9 @@ class HostInput {
       jumpHostIds.hashCode ^
       tags.hashCode ^
       notes.hashCode ^
-      favorite.hashCode;
+      favorite.hashCode ^
+      startupCommand.hashCode ^
+      keepSession.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -189,7 +208,9 @@ class HostInput {
           jumpHostIds == other.jumpHostIds &&
           tags == other.tags &&
           notes == other.notes &&
-          favorite == other.favorite;
+          favorite == other.favorite &&
+          startupCommand == other.startupCommand &&
+          keepSession == other.keepSession;
 }
 
 class HostView {
@@ -207,6 +228,12 @@ class HostView {
   final String notes;
   final bool favorite;
 
+  /// Befehl, der nach dem Anmelden statt der Login-Shell läuft.
+  final String startupCommand;
+
+  /// Terminalsitzungen laufen auf dem Host in tmux und überstehen einen Verbindungsabbruch.
+  final bool keepSession;
+
   const HostView({
     required this.id,
     required this.label,
@@ -219,6 +246,8 @@ class HostView {
     required this.tags,
     required this.notes,
     required this.favorite,
+    required this.startupCommand,
+    required this.keepSession,
   });
 
   @override
@@ -233,7 +262,9 @@ class HostView {
       jumpHostIds.hashCode ^
       tags.hashCode ^
       notes.hashCode ^
-      favorite.hashCode;
+      favorite.hashCode ^
+      startupCommand.hashCode ^
+      keepSession.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -250,7 +281,9 @@ class HostView {
           jumpHostIds == other.jumpHostIds &&
           tags == other.tags &&
           notes == other.notes &&
-          favorite == other.favorite;
+          favorite == other.favorite &&
+          startupCommand == other.startupCommand &&
+          keepSession == other.keepSession;
 }
 
 class IdentityInput {

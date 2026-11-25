@@ -24,7 +24,8 @@ pub(crate) static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| 
 #[derive(Default)]
 pub(crate) struct App {
     pub(crate) core: Option<Core>,
-    pub(crate) sessions: HashMap<u32, ShellInput>,
+    /// Offene Terminalsitzungen: ihre Eingabe und die Verbindung, über die sie laufen.
+    pub(crate) sessions: HashMap<u32, (ShellInput, Arc<SshClient>)>,
     /// Laufende Sitzungsaufgaben, um auch einen noch laufenden Verbindungsaufbau abbrechen zu können.
     pub(crate) tasks: HashMap<u32, tokio::task::AbortHandle>,
     /// Offene Rückfragen an den Nutzer, nach ihrer Kennung.
@@ -160,16 +161,17 @@ pub(crate) async fn run_session(
     core: Core,
     host_id: ItemId,
     session_id: u32,
+    slot: u32,
     cols: u32,
     rows: u32,
     sink: &Arc<StreamSink<SessionEvent>>,
 ) -> Result<()> {
-    let startup = core.with_vault(|v| v.get::<Host>(host_id))?.and_then(|h| h.startup_command);
+    let command = core.with_vault(|v| v.get::<Host>(host_id))?.and_then(|h| tephra_core::session_command(&h, slot));
     let ui: Arc<dyn ConnectUi> = Arc::new(SinkUi { sink: sink.clone() });
     let client = core.connect(host_id, ui).await?;
     let pty = PtyOptions { cols: cols.clamp(10, 1000), rows: rows.clamp(2, 500), ..PtyOptions::default() };
-    let mut shell = client.shell(pty, startup.as_deref()).await?;
-    app().sessions.insert(session_id, shell.input.clone());
+    let mut shell = client.shell(pty, command.as_deref()).await?;
+    app().sessions.insert(session_id, (shell.input.clone(), client.clone()));
     let _ = sink.add(SessionEvent::Connected { description: client.description().to_string() });
 
     while let Some(event) = shell.events.recv().await {
@@ -205,5 +207,5 @@ pub(crate) async fn run_session(
 }
 
 pub(crate) fn session(session_id: u32) -> Result<ShellInput> {
-    app().sessions.get(&session_id).cloned().ok_or_else(|| anyhow!("Die Sitzung ist beendet"))
+    app().sessions.get(&session_id).map(|(input, _)| input.clone()).ok_or_else(|| anyhow!("Die Sitzung ist beendet"))
 }

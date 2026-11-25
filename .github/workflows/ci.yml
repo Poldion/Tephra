@@ -88,6 +88,9 @@ jobs:
           cargo build -p tephra-server -p tephra-cli
           ./target/debug/examples/test_server > "$RUNNER_TEMP/server.txt" &
           ./target/debug/tephra-server --db "$RUNNER_TEMP/sync.sqlite" --bind 127.0.0.2:8790 --registration open &
+          # A real SSH server with tmux for "keep the session on the host".
+          docker build -q -t tephra-test-sshd -f app/integration_test/sshd.Dockerfile app/integration_test
+          docker run -d -p 127.0.0.1:2222:22 tephra-test-sshd
           for attempt in $(seq 50); do grep -q '^port=' "$RUNNER_TEMP/server.txt" && break; sleep 0.2; done
           port="$(sed -n 's/^port=//p' "$RUNNER_TEMP/server.txt")"
           mkdir -p "$RUNNER_TEMP/shots"
@@ -96,7 +99,8 @@ jobs:
             flutter test integration_test/app_test.dart -d linux --reporter expanded \
             --dart-define=TEPHRA_TEST_PORT="$port" --dart-define=TEPHRA_TEST_SHOTS="$RUNNER_TEMP/shots" \
             --dart-define=TEPHRA_TEST_SYNC=http://127.0.0.2:8790 \
-            --dart-define=TEPHRA_TEST_CLI="$GITHUB_WORKSPACE/target/debug/tephra"
+            --dart-define=TEPHRA_TEST_CLI="$GITHUB_WORKSPACE/target/debug/tephra" \
+            --dart-define=TEPHRA_TEST_SSHD=127.0.0.1:2222:tester:geheim-tmux
           cd ..
           export TEPHRA_VAULT="$RUNNER_TEMP/second/vault.tephra" TEPHRA_PASSWORD="ein langes Master-Passwort"
           if ./target/debug/tephra sync join http://127.0.0.2:8790 tester; then echo "plain http was accepted without --allow-http"; exit 1; fi

@@ -76,6 +76,8 @@ class _HostsPageState extends State<HostsPage> with ReloadOnSync<HostsPage> {
           tags: host.tags,
           notes: host.notes,
           favorite: !host.favorite,
+          startupCommand: host.startupCommand,
+          keepSession: host.keepSession,
         ),
       ),
     );
@@ -249,6 +251,8 @@ class _HostEditorState extends State<HostEditor> {
   late final _port = TextEditingController(text: '${widget.host?.port ?? 22}');
   late final _tags = TextEditingController(text: widget.host?.tags.join(', ') ?? '');
   late final _notes = TextEditingController(text: widget.host?.notes ?? '');
+  late final _startup = TextEditingController(text: widget.host?.startupCommand ?? '');
+  late bool _keepSession = widget.host?.keepSession ?? false;
   late String? _identityId = widget.host?.identityId;
   late String? _vpnId = widget.host?.vpnProfileId;
   late final List<String> _jumps = [...?widget.host?.jumpHostIds];
@@ -275,7 +279,7 @@ class _HostEditorState extends State<HostEditor> {
 
   @override
   void dispose() {
-    for (final controller in [_label, _address, _port, _tags, _notes]) {
+    for (final controller in [_label, _address, _port, _tags, _notes, _startup]) {
       controller.dispose();
     }
     super.dispose();
@@ -300,6 +304,8 @@ class _HostEditorState extends State<HostEditor> {
           tags: _tags.text.split(','),
           notes: _notes.text,
           favorite: _favorite,
+          startupCommand: _startup.text,
+          keepSession: _keepSession,
         ),
       );
       Navigator.pop(context, true);
@@ -423,6 +429,38 @@ class _HostEditorState extends State<HostEditor> {
           minLines: 2,
           maxLines: 5,
           decoration: InputDecoration(labelText: t('Notizen', 'Notes'), alignLabelWithHint: true),
+        ),
+        SwitchListTile(
+          key: const Key('host-keep-session'),
+          value: _keepSession,
+          onChanged: (value) => setState(() => _keepSession = value),
+          contentPadding: EdgeInsets.zero,
+          title: Text(t('Sitzung auf dem Host halten (tmux)', 'Keep the session on the host (tmux)')),
+          subtitle: Text(
+            t(
+              'Reißt die Verbindung ab, läuft auf dem Host alles weiter, und die App verbindet sich wieder mit '
+                  'derselben Sitzung. Gut für Claude Code und lange Befehle am Telefon. Auf dem Host muss tmux '
+                  'installiert sein.',
+              'If the connection drops, everything keeps running on the host and the app reattaches to the same '
+                  'session. Good for Claude Code and long commands on the phone. The host needs tmux installed.',
+            ),
+          ),
+        ),
+        TextField(
+          key: const Key('host-startup-command'),
+          controller: _startup,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(
+            labelText: t('Befehl nach dem Anmelden', 'Command after login'),
+            hintText: t(
+              'leer für die Shell, z. B. cd ~/projekt && claude',
+              'empty for the shell, e.g. cd ~/project && claude',
+            ),
+            helperText: _keepSession
+                ? t('Läuft nur, wenn die tmux-Sitzung neu entsteht.', 'Runs only when the tmux session is created.')
+                : null,
+          ),
         ),
         SwitchListTile(
           value: _favorite,

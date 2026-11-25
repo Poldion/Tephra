@@ -350,6 +350,8 @@ class _StatusBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (session.reconnecting)
+            TextButton(onPressed: session.reconnect, child: Text(t('Jetzt verbinden', 'Connect now'))),
           if (closed) ...[
             TextButton(onPressed: session.reconnect, child: Text(t('Neu verbinden', 'Reconnect'))),
             TextButton(onPressed: onClose, child: Text(t('Schließen', 'Close'))),

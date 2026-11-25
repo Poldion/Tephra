@@ -5,12 +5,14 @@
 
 mod connect;
 mod import;
+mod keep;
 #[cfg(test)]
 mod tests;
 mod tunnels;
 
 pub use connect::{ConnectUi, HostKeyQuestion, HostKeyState, NonInteractive, ResolvedHost};
 pub use import::{ImportReport, SshConfigHost, parse_ssh_config};
+pub use keep::{session_command, tmux_session_name};
 pub use tunnels::TunnelState;
 
 pub use tephra_crypto::{KdfParams, RecoveryKey, VaultKey};

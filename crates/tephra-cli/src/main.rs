@@ -573,7 +573,9 @@ async fn run(cli: Cli) -> Fallible<ExitCode> {
             let (id, entry) = find::<Host>(&core, &host)?;
             let ui: Arc<dyn ConnectUi> = Arc::new(ui::TerminalUi);
             let client = core.connect(id, ui).await.map_err(text)?;
-            let exit = term::interactive(&client, entry.startup_command.as_deref()).await?;
+            // Mit „Sitzung halten“ hängt sich die Kommandozeile an das erste Terminal der App (tephra-1).
+            let command = tephra_core::session_command(&entry, 1);
+            let exit = term::interactive(&client, command.as_deref()).await?;
             client.disconnect().await;
             core.lock().await;
             return Ok(ExitCode::from(exit.unwrap_or(0).min(255) as u8));

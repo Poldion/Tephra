@@ -11,16 +11,28 @@ import 'text.dart';
 
 enum SessionState { connecting, connected, closed }
 
+/// Pausen zwischen den Versuchen, eine abgerissene Verbindung wiederherzustellen. Nach dem letzten gibt die
+/// Sitzung auf, bis das Netz wechselt, die App wieder in den Vordergrund kommt oder der Nutzer es selbst versucht.
+const reconnectDelays = [1, 3, 5, 10, 20, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30];
+
+/// Setzt das Terminal nach einem Abbruch zurück: zurück aus dem Vollbild eines Programms (tmux, vim), keine
+/// Mausmeldungen, kein Einfügemodus, sichtbarer Cursor, normale Schrift. Das abgerissene Programm kann das
+/// selbst nicht mehr tun.
+const _resetModes = '\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h\x1b[0m';
+
 /// Eine Terminalsitzung zu einem Host. Sie lebt unabhängig davon, ob ihr
 /// Terminal gerade angezeigt wird; die Ausgabe sammelt sich im Puffer.
 class TerminalSession extends ChangeNotifier {
-  TerminalSession(this.host) {
+  /// [slot] unterscheidet mehrere Terminals zum selben Host (ab 1). Bei Hosts mit „Sitzung halten“ gehört
+  /// zu jeder Nummer eine eigene tmux-Sitzung, die nach einem Abbruch wiedergefunden wird.
+  TerminalSession(this.host, {this.slot = 1}) {
     terminal.onOutput = _send;
     terminal.onResize = (cols, rows, _, _) => _resize(cols, rows);
     _start();
   }
 
   final HostView host;
+  final int slot;
   final Terminal terminal = Terminal(maxLines: 10000);
   final TerminalController controller = TerminalController();
 
@@ -40,6 +52,25 @@ class TerminalSession extends ChangeNotifier {
   bool _explained = false;
   Future<void> _writes = Future.value();
   late ByteConversionSink _decoder;
+
+  /// Wie oft in Folge schon versucht wurde, die abgerissene Verbindung wiederherzustellen; 0, solange sie steht
+  /// oder nie stand.
+  int _attempts = 0;
+  Timer? _retry;
+
+  /// Ob sich die Shell selbst beendet hat; dann wird nicht neu verbunden.
+  bool _exited = false;
+
+  /// Ob die Sitzung nach einem Abbruch aufgegeben hat. Ein Netzwechsel versucht es dann noch einmal.
+  bool _gaveUp = false;
+
+  /// Ob der Nutzer eine Rückfrage beim Wiederverbinden abgebrochen hat; dann versucht es auch ein Netzwechsel
+  /// nicht von selbst noch einmal.
+  bool _declined = false;
+  bool _checking = false;
+
+  /// Ob die Sitzung gerade versucht, eine abgerissene Verbindung wiederherzustellen.
+  bool get reconnecting => _attempts > 0 && state == SessionState.connecting;
 
   bool get needsAttention => prompt != null;
 
@@ -109,15 +140,21 @@ class TerminalSession extends ChangeNotifier {
 
   void _start() {
     final run = ++_run;
+    _retry?.cancel();
+    _retry = null;
     _id = null;
     prompt = null;
     _explained = false;
+    _exited = false;
+    _gaveUp = false;
     state = SessionState.connecting;
-    status = t('Verbindung wird aufgebaut …', 'Connecting …');
+    status = _attempts == 0
+        ? t('Verbindung wird aufgebaut …', 'Connecting …')
+        : t('Verbindung wird wiederhergestellt …', 'Reconnecting …');
     _writes = Future.value();
     _decoder = const Utf8Decoder(allowMalformed: true).startChunkedConversion(_TerminalSink(terminal));
     try {
-      openSession(hostId: host.id, cols: terminal.viewWidth, rows: terminal.viewHeight).listen(
+      openSession(hostId: host.id, slot: slot, cols: terminal.viewWidth, rows: terminal.viewHeight).listen(
         (event) => _onEvent(run, event),
         onError: (Object error) => _onFailure(run, error.toString()),
         onDone: () => _onClosed(run),
@@ -138,6 +175,14 @@ class TerminalSession extends ChangeNotifier {
       case SessionEvent_Opened(:final sessionId):
         _id = sessionId;
       case SessionEvent_Connected(:final description):
+        if (_attempts > 0) {
+          terminal.write(_resetModes);
+          // Mit tmux zeichnet die wiedergefundene Sitzung sich gleich selbst; ohne beginnt eine neue Shell.
+          if (!host.keepSession) {
+            _note(t('Neu verbunden. Die vorige Shell ist beendet.', 'Reconnected. The previous shell has ended.'));
+          }
+        }
+        _attempts = 0;
         state = SessionState.connected;
         status = clean(description);
         _resize(terminal.viewWidth, terminal.viewHeight);
@@ -150,6 +195,7 @@ class TerminalSession extends ChangeNotifier {
         final suffix = code == null ? '' : ' (${t('Code', 'code')} $code)';
         _note('${t('Sitzung beendet', 'Session ended')}$suffix');
         _explained = true;
+        _exited = true;
       case SessionEvent_Failed(:final message):
         _onFailure(run, message);
         return;
@@ -160,17 +206,29 @@ class TerminalSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ob ein Ende dieser Verbindung als Abbruch gilt, nach dem neu verbunden wird: Sie stand schon (oder es
+  /// ist bereits ein neuer Versuch), und die Shell hat sich nicht selbst beendet.
+  bool get _wouldRetry => !_exited && (state == SessionState.connected || _attempts > 0);
+
   void _onFailure(int run, String message) {
     if (run != _run || _disposed) return;
     final text = clean(message).trim();
     status = text.split('\n').first;
-    _note(text, error: true);
-    _explained = true;
+    // Bei einem Abbruch steht der Grund nur in der Statuszeile; ins Terminal kommt erst etwas, wenn die
+    // Sitzung aufgibt. Sonst füllte jeder gescheiterte Versuch im Funkloch eine Zeile.
+    if (!_wouldRetry) {
+      _note(text, error: true);
+      _explained = true;
+    }
     notifyListeners();
   }
 
   void _onClosed(int run) {
     if (run != _run || _disposed || state == SessionState.closed) return;
+    if (_wouldRetry) {
+      _connectionLost();
+      return;
+    }
     // Reißt die Verbindung ab, endet die Sitzung ohne ein Wort des Servers.
     if (state == SessionState.connected && !_explained) {
       _note(t('Verbindung getrennt', 'Connection lost'), error: true);
@@ -182,6 +240,76 @@ class TerminalSession extends ChangeNotifier {
       status = t('Getrennt', 'Disconnected');
     }
     notifyListeners();
+  }
+
+  /// Die Verbindung ist abgerissen: Nach einer kurzen Pause wird sie neu aufgebaut, mit wachsendem Abstand.
+  void _connectionLost() {
+    final id = _id;
+    // Ereignisse der alten Verbindung zählen nicht mehr.
+    _run++;
+    _id = null;
+    prompt = null;
+    if (id != null) sessionClose(sessionId: id).ignore();
+    if (_attempts >= reconnectDelays.length) {
+      _giveUp();
+      return;
+    }
+    final delay = reconnectDelays[_attempts];
+    _attempts++;
+    state = SessionState.connecting;
+    status = t('Verbindung unterbrochen, neuer Versuch in $delay s', 'Connection interrupted, retrying in $delay s');
+    _retry?.cancel();
+    _retry = Timer(Duration(seconds: delay), () {
+      _retry = null;
+      if (_disposed || state != SessionState.connecting) return;
+      _start();
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  void _giveUp() {
+    _retry?.cancel();
+    _retry = null;
+    _attempts = 0;
+    _gaveUp = !_declined;
+    _declined = false;
+    terminal.write(_resetModes);
+    _note(t('Verbindung getrennt', 'Connection lost'), error: true);
+    state = SessionState.closed;
+    status = t('Getrennt', 'Disconnected');
+    notifyListeners();
+  }
+
+  /// Nach einem Netzwechsel oder wenn die App wieder sichtbar wird: Eine stehende Verbindung wird geprüft und
+  /// bei Bedarf neu aufgebaut, ein wartender Versuch startet sofort, und eine nach einem Abbruch aufgegebene
+  /// Sitzung versucht es noch einmal.
+  Future<void> checkConnection() async {
+    if (_disposed) return;
+    if (_retry != null) {
+      _attempts = 1;
+      _start();
+      notifyListeners();
+      return;
+    }
+    if (_gaveUp && state == SessionState.closed) {
+      _attempts = 1;
+      _start();
+      notifyListeners();
+      return;
+    }
+    final id = _id;
+    if (id == null || state != SessionState.connected || _checking) return;
+    _checking = true;
+    final run = _run;
+    try {
+      final alive = await sessionCheck(sessionId: id, timeoutMs: 4000);
+      if (!alive && run == _run && !_disposed && state == SessionState.connected) _connectionLost();
+    } catch (_) {
+      // Eine Prüfung, die selbst scheitert, ändert nichts.
+    } finally {
+      _checking = false;
+    }
   }
 
   /// Schreibt einen Hinweis der App (nicht des Servers) ins Terminal.
@@ -213,6 +341,7 @@ class TerminalSession extends ChangeNotifier {
     final request = prompt;
     if (request is! SessionEvent_HostKey) return;
     answerDecision(requestId: request.requestId, accept: accept);
+    if (!accept) _stopRetrying();
     _clearPrompt();
   }
 
@@ -221,6 +350,7 @@ class TerminalSession extends ChangeNotifier {
     final request = prompt;
     if (request is! SessionEvent_Password) return;
     answerText(requestId: request.requestId, text: password);
+    if (password == null) _stopRetrying();
     _clearPrompt();
   }
 
@@ -229,7 +359,15 @@ class TerminalSession extends ChangeNotifier {
     final request = prompt;
     if (request is! SessionEvent_ServerPrompts) return;
     answerTexts(requestId: request.requestId, texts: answers);
+    if (answers == null) _stopRetrying();
     _clearPrompt();
+  }
+
+  /// Bricht der Nutzer eine Rückfrage beim Wiederverbinden ab, will er nicht, dass es weiter versucht wird.
+  void _stopRetrying() {
+    if (_attempts == 0) return;
+    _attempts = reconnectDelays.length;
+    _declined = true;
   }
 
   void _clearPrompt() {
@@ -238,9 +376,15 @@ class TerminalSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Baut die Verbindung nach dem Ende einer Sitzung neu auf.
+  /// Baut die Verbindung nach dem Ende einer Sitzung neu auf; wartet gerade ein neuer Versuch, beginnt er sofort.
   void reconnect() {
+    if (_retry != null) {
+      _start();
+      notifyListeners();
+      return;
+    }
     if (state != SessionState.closed) return;
+    _attempts = 0;
     _start();
     notifyListeners();
   }
@@ -249,6 +393,8 @@ class TerminalSession extends ChangeNotifier {
   void close() {
     if (_disposed) return;
     _disposed = true;
+    _retry?.cancel();
+    _retry = null;
     final id = _id;
     if (id != null) sessionClose(sessionId: id).ignore();
     _files?.dispose();
