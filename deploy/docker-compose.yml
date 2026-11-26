@@ -18,6 +18,8 @@ services:
       # Caddy sets X-Forwarded-For; login attempts are limited per address from that header.
       # Remove this line if the server is reachable without a proxy in front of it.
       TEPHRA_SERVER_BEHIND_PROXY: "true"
+      # Caddy provides TLS; the server's own certificate is not needed behind it.
+      TEPHRA_SERVER_TLS: "off"
       TEPHRA_SERVER_MAX_ITEMS: "50000"
       TEPHRA_SERVER_MAX_MIB: "256"
     volumes:

@@ -357,10 +357,19 @@ certificate authority works once its root certificate is installed on the phone.
 
 Good to know:
 
-- **Addresses start with `https://`.** Plain `http://` is accepted only for `localhost` – and for a server in your own
-  network if you allow it explicitly: with `--allow-http` for `tephra sync register` and `tephra sync join`, in the app
-  with the checkbox "Connect without encryption" that appears below such an address. The permission holds for this
-  connection until you disconnect it. What you give up is described under "Running the sync server".
+- **The connection is encrypted.** The sync server creates its certificate itself. On first contact the device
+  remembers its fingerprint, like SSH remembers a host key, and afterwards talks only to exactly that server. This also
+  applies when you enter `http://<address>:8787`: if the server can do HTTPS, the device connects encrypted. Devices
+  still connected over `http://` switch over by themselves with the next sync. `tephra sync status` and the sync dialog
+  show the fingerprint; compare it with the line "TLS-Fingerabdruck" in the log of the server if you like.
+- **A different fingerprint** stops syncing. If the server was set up anew, accept the new one with
+  `tephra sync trust` or in the app with "Check the fingerprint of the server". Otherwise don't: someone may have
+  stepped in between.
+- **Without HTTPS on the server**, `http://` works only for `localhost` and with your explicit permission
+  (`--allow-http`, in the app the checkbox "Connect without encryption"). What you give up is described under "Running
+  the sync server".
+- **Signing out another device** needs the master password (`tephra sync remove-device`, in the app under the
+  devices). A captured session token is not enough for that.
 - **Conflicts.** If two devices change the same entry, the changes are merged field by field; for the same field the
   later change wins. A deletion wins over a concurrent change.
 - **Not synced:** keys marked `--local-only`, MCP clients, grants and the audit log, and the sync session itself.
@@ -700,21 +709,28 @@ tephra-server delete-account alice               # deletes an account with all i
 | `--max-items <n>` | `TEPHRA_SERVER_MAX_ITEMS` | `50000` | Records per account, deletion markers included |
 | `--max-mib <n>` | `TEPHRA_SERVER_MAX_MIB` | `256` | Data per account in MiB |
 | `--behind-proxy` | `TEPHRA_SERVER_BEHIND_PROXY` | off | The server is behind a reverse proxy that sets `X-Forwarded-For` |
+| `--tls <mode>` | `TEPHRA_SERVER_TLS` | `auto` | `auto`: HTTPS and HTTP on the same port; `only`: HTTPS only; `off`: HTTP only (behind a proxy with TLS) |
+| `--tls-dir <folder>` | `TEPHRA_SERVER_TLS_DIR` | `tls` next to the database | Folder for the self-created certificate |
+| `--tls-cert`, `--tls-key` | `TEPHRA_SERVER_TLS_CERT`, `TEPHRA_SERVER_TLS_KEY` | – | Your own certificate (PEM) instead of the self-created one |
 
 The options apply with or without the command `serve`; `tephra-server` on its own starts the server.
 
-**TLS.** The server speaks plain HTTP and is meant to listen on `127.0.0.1` behind a reverse proxy that provides TLS.
-Clients refuse `http://` addresses other than `localhost` and check the certificate against the certificate store of
-the operating system. Requests to `/v1/events` stay open for up to 55 seconds, so the proxy must not cut connections
-off earlier. `GET /healthz` answers `ok`.
+**TLS without manual work.** On first start the server creates a certificate (`cert.pem`, `key.pem` in the folder
+`tls` next to the database) and writes its fingerprint to the log ("TLS-Fingerabdruck"). With `--tls auto` (default)
+it speaks HTTPS and HTTP on the same port: devices still connected over `http://` switch to HTTPS by themselves with
+the next sync and remember the fingerprint. Once all have switched, `--tls only` closes plain HTTP. If a recognised
+certificate authority vouches for the certificate (your own with `--tls-cert`, or a proxy in front), devices check it
+against the certificate store of the system as usual. Requests to `/v1/events` stay open for up to 55 seconds; a proxy
+must not cut connections off earlier. `GET /healthz` answers `ok`.
 
-**In your own network without TLS.** If the server can only be reached in your own network – at home or through a
-VPN – it can run without a proxy: with `--bind 0.0.0.0:8787` and without `--behind-proxy`. Clients then connect to
-`http://<address>:8787` and need your explicit permission for that (`--allow-http`, in the app the checkbox "Connect
-without encryption"). The content of the vault stays encrypted even so. Whoever listens in on that network does see
-the login proof and the session tokens, though. With them they can sign in to the server as one of your devices, fetch
-the encrypted records and try master passwords against them, remove devices and delete the account on the server.
-Across the internet there always has to be TLS in front.
+**In your own network.** If the server can only be reached in your own network – at home or through a VPN – it runs
+without a proxy with `--bind 0.0.0.0:8787` and without `--behind-proxy`; it brings its own encryption. Every device
+remembers the fingerprint on first contact. Someone sitting in between at exactly that moment could slip in a
+certificate of their own; to be sure, compare the fingerprint once with the log of the server. With `--tls off` and
+`--allow-http` it also works without any encryption. The content of the vault stays encrypted, but whoever listens in
+on the network sees the login proof and the session tokens: with them they can sign in as one of your devices, fetch
+the encrypted records and try master passwords against them, change the password on the server and delete the account
+on the server.
 
 **Behind a proxy, set `--behind-proxy`.** Failed logins are limited per user name and sender: 10 within 5 minutes.
 Without the option, every request seems to come from the proxy, and one person guessing passwords would slow down
@@ -754,8 +770,9 @@ The database lives in the volume `sync-data`. The server runs as an unprivileged
 `TEPHRA_SERVER_BEHIND_PROXY` set because Caddy is in front of it.
 `docker compose exec sync tephra-server accounts` lists the accounts.
 
-For a server in your own network only, without TLS (see above), drop the service `caddy`. The service `sync` then gets
-`ports: ["8787:8787"]` instead of `expose`, and the line `TEPHRA_SERVER_BEHIND_PROXY` is removed.
+For a server in your own network only (see above), drop the service `caddy`. The service `sync` then gets
+`ports: ["8787:8787"]` instead of `expose`, and the lines `TEPHRA_SERVER_BEHIND_PROXY` and `TEPHRA_SERVER_TLS` are
+removed: the server brings its own TLS.
 
 ### With systemd
 

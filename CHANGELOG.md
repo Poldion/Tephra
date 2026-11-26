@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] – 2026-11-26
+
+Security release after a review of the app and of syncing in a home network.
+
+### Added
+
+- **TLS for the sync server without manual work.** On first start the server creates its own certificate and logs its
+  fingerprint ("TLS-Fingerabdruck"). With `--tls auto` (default) it speaks HTTPS and HTTP on the same port; `--tls only`
+  closes plain HTTP, `--tls off` is for running behind a proxy with TLS. Your own certificate: `--tls-cert`/`--tls-key`.
+- **Pinned server certificate on the devices.** A device remembers the fingerprint on first contact, like SSH a host
+  key, and afterwards only talks to exactly that server. Devices connected over `http://` switch to HTTPS by themselves
+  as soon as the server offers it; entering an `http://` address of a server that can do HTTPS also ends up encrypted,
+  without "Connect without encryption". A different certificate stops syncing until you accept it with
+  `tephra sync trust` or "Check the fingerprint of the server" in the app. `tephra sync status` and the sync dialog
+  show the fingerprint.
+- **Destroyed server copies are repaired:** if the server holds a version of a record that cannot be decrypted (for
+  example garbage uploaded with a stolen session token), a device with a valid version uploads it again.
+- **After an update a device fetches everything once more**, so records of kinds an older version did not know (such as
+  the MCP devices of 0.11) appear right away.
+
+### Changed
+
+- **Signing out another device needs the master password** (CLI, app and server). A captured session token is no
+  longer enough to throw out your devices. Older apps can no longer sign out other devices against a 0.12 server.
+- **MCP questions cannot hide a command any more:** runs of spaces and blank lines are shown as a note, commands with
+  several lines are marked, and the app only allows once the text has been scrolled to its end. Commands or input
+  longer than 20,000 characters are refused without asking instead of being shown cut off. The audit log keeps start,
+  end, length and checksum of long commands.
+- `deploy/docker-compose.yml` and the systemd unit set `TEPHRA_SERVER_TLS=off`, because Caddy provides TLS there.
+
 ## [0.11.0] – 2026-11-26
 
 ### Added

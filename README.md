@@ -68,7 +68,7 @@ The project is under active development. **What exists today:**
 | **Snippets** | Stored commands with `{{placeholders}}`, available to language models through MCP |
 | **MCP** | Commands, interactive sessions and file access for language models; per client and per host; three access levels, confirmation in the terminal or the app that shows exactly what will run, audit log written before anything runs, kill switch that also ends running sessions; devices without a screen can be managed and confirmed from your phone (`tephra mcp remote on`) |
 | **Sync** | End-to-end encrypted, works offline and catches up later, merges concurrent changes field by field, device list with removal |
-| **Sync server** | One binary with an SQLite file; registration open, by invite code or closed; quota per account; failed logins limited per user name and sender |
+| **Sync server** | One binary with an SQLite file; TLS with a self-created certificate whose fingerprint the devices pin, no certificate authority needed; registration open, by invite code or closed; quota per account; failed logins limited per user name and sender |
 
 ## Quick start
 

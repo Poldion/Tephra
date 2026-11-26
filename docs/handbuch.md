@@ -371,11 +371,20 @@ Telefon installiert ist.
 
 Gut zu wissen:
 
-- **Adressen beginnen mit `https://`.** Einfaches `http://` wird nur für `localhost` angenommen – und für einen Server
-  im eigenen Netz, wenn du es ausdrücklich erlaubst: mit `--allow-http` bei `tephra sync register` und
-  `tephra sync join`, in der App mit dem Haken „Unverschlüsselt verbinden“, der unter einer solchen Adresse erscheint.
-  Die Erlaubnis gilt für diese Verbindung, bis du sie trennst. Was du damit aufgibst, steht unter
+- **Die Verbindung ist verschlüsselt.** Der Sync-Server erzeugt sein Zertifikat selbst. Beim ersten Kontakt merkt sich
+  das Gerät dessen Fingerabdruck, wie SSH einen Hostschlüssel, und spricht danach nur noch mit genau diesem Server.
+  Das gilt auch, wenn du `http://<adresse>:8787` eingibst: Kann der Server HTTPS, verbindet das Gerät verschlüsselt.
+  Geräte, die noch über `http://` verbunden sind, steigen beim nächsten Abgleich von selbst um. `tephra sync status`
+  und der Dialog des Abgleichs zeigen den Fingerabdruck; vergleiche ihn bei Bedarf mit der Zeile
+  „TLS-Fingerabdruck“ im Protokoll des Servers.
+- **Ein anderer Fingerabdruck** stoppt den Abgleich. Wurde der Server neu eingerichtet, übernimmst du den neuen mit
+  `tephra sync trust` oder in der App mit „Fingerabdruck des Servers prüfen“. Sonst nicht: Dann könnte sich jemand
+  dazwischengeschaltet haben.
+- **Ohne HTTPS beim Server** geht `http://` nur für `localhost` und mit deiner ausdrücklichen Erlaubnis
+  (`--allow-http`, in der App der Haken „Unverschlüsselt verbinden“). Was du damit aufgibst, steht unter
   „Sync-Server betreiben“.
+- **Ein anderes Gerät abmelden** verlangt das Master-Passwort (`tephra sync remove-device`, in der App unter den
+  Geräten). Ein mitgeschnittenes Sitzungstoken reicht dafür nicht.
 - **Konflikte.** Ändern zwei Geräte denselben Eintrag, werden die Änderungen feldweise zusammengeführt; beim selben
   Feld gewinnt die spätere. Eine Löschung gewinnt gegen eine gleichzeitige Änderung.
 - **Nicht abgeglichen** werden Schlüssel mit `--local-only`, MCP-Clients, Freigaben und Protokoll sowie die Sitzung
@@ -725,21 +734,29 @@ tephra-server delete-account alice               # löscht ein Konto mit allen D
 | `--max-items <n>` | `TEPHRA_SERVER_MAX_ITEMS` | `50000` | Datensätze je Konto, Löschmarker eingeschlossen |
 | `--max-mib <n>` | `TEPHRA_SERVER_MAX_MIB` | `256` | Datenmenge je Konto in MiB |
 | `--behind-proxy` | `TEPHRA_SERVER_BEHIND_PROXY` | aus | Der Server steht hinter einem Reverse-Proxy, der `X-Forwarded-For` setzt |
+| `--tls <art>` | `TEPHRA_SERVER_TLS` | `auto` | `auto`: HTTPS und HTTP auf demselben Port; `only`: nur HTTPS; `off`: nur HTTP (hinter einem Proxy mit TLS) |
+| `--tls-dir <ordner>` | `TEPHRA_SERVER_TLS_DIR` | `tls` neben der Datenbank | Ordner für das selbst erzeugte Zertifikat |
+| `--tls-cert`, `--tls-key` | `TEPHRA_SERVER_TLS_CERT`, `TEPHRA_SERVER_TLS_KEY` | – | Eigenes Zertifikat (PEM) statt des selbst erzeugten |
 
 Die Optionen gelten mit und ohne den Befehl `serve`; `tephra-server` allein startet den Server.
 
-**TLS.** Der Server spricht einfaches HTTP und soll auf `127.0.0.1` hinter einem Reverse-Proxy lauschen, der TLS
-bereitstellt. Clients lehnen `http://`-Adressen ab, außer für `localhost`, und prüfen das Zertifikat gegen den
-Zertifikatsspeicher des Betriebssystems. Anfragen an `/v1/events` bleiben bis zu 55 Sekunden offen, der Proxy darf
-Verbindungen also nicht früher trennen. `GET /healthz` antwortet mit `ok`.
+**TLS ohne Handarbeit.** Beim ersten Start erzeugt der Server ein Zertifikat (`cert.pem`, `key.pem` im Ordner `tls`
+neben der Datenbank) und schreibt dessen Fingerabdruck ins Protokoll („TLS-Fingerabdruck“). Mit `--tls auto` (Standard)
+spricht er auf demselben Port HTTPS und HTTP: Geräte, die noch über `http://` verbunden sind, steigen beim nächsten
+Abgleich von selbst auf HTTPS um und merken sich dabei den Fingerabdruck. Sind alle umgestiegen, schließt `--tls only`
+das unverschlüsselte HTTP. Bürgt eine anerkannte Zertifizierungsstelle für das Zertifikat (eigenes mit `--tls-cert`
+oder ein Proxy davor), prüfen die Geräte wie gewohnt gegen den Zertifikatsspeicher des Systems. Anfragen an
+`/v1/events` bleiben bis zu 55 Sekunden offen; ein Proxy darf Verbindungen nicht früher trennen. `GET /healthz`
+antwortet mit `ok`.
 
-**Im eigenen Netz ohne TLS.** Ist der Server nur in deinem eigenen Netz erreichbar – zu Hause oder über ein VPN –,
-kann er ohne Proxy laufen: mit `--bind 0.0.0.0:8787` und ohne `--behind-proxy`. Die Clients verbinden sich dann mit
-`http://<adresse>:8787` und brauchen dafür deine ausdrückliche Erlaubnis (`--allow-http`, in der App der Haken
-„Unverschlüsselt verbinden“). Der Inhalt des Tresors bleibt auch so verschlüsselt. Wer in diesem Netz mitliest, sieht
-aber den Anmeldenachweis und die Sitzungstokens. Damit kann er sich am Server als eines deiner Geräte anmelden, die
-verschlüsselten Datensätze abholen und daran Master-Passwörter durchprobieren, Geräte entfernen und das Konto auf dem
-Server löschen. Über das Internet gehört deshalb immer TLS davor.
+**Im eigenen Netz.** Ist der Server nur in deinem eigenen Netz erreichbar – zu Hause oder über ein VPN –, läuft er
+ohne Proxy mit `--bind 0.0.0.0:8787` und ohne `--behind-proxy`; die Verschlüsselung bringt er selbst mit. Den
+Fingerabdruck merkt sich jedes Gerät beim ersten Kontakt. Wer genau in diesem Moment dazwischen sitzt, könnte ein
+eigenes Zertifikat unterschieben; wer sichergehen will, vergleicht den Fingerabdruck einmal mit dem Protokoll des
+Servers. Mit `--tls off` und `--allow-http` geht es auch ganz ohne Verschlüsselung. Der Inhalt des Tresors bleibt
+dann verschlüsselt, aber wer im Netz mitliest, sieht den Anmeldenachweis und die Sitzungstokens: Damit kann er sich
+als eines deiner Geräte anmelden, die verschlüsselten Datensätze abholen und daran Master-Passwörter durchprobieren,
+das Passwort beim Server ändern und das Konto auf dem Server löschen.
 
 **Hinter einem Proxy `--behind-proxy` setzen.** Fehlversuche bei der Anmeldung sind je Benutzername und Absender
 begrenzt: 10 innerhalb von 5 Minuten. Ohne die Option scheint jede Anfrage vom Proxy zu kommen, und ein Einzelner, der
@@ -780,8 +797,9 @@ Die Datenbank liegt im Volume `sync-data`. Der Server läuft als unprivilegierte
 Container, mit gesetztem `TEPHRA_SERVER_BEHIND_PROXY`, weil Caddy davorsteht. `docker compose exec sync tephra-server
 accounts` listet die Konten.
 
-Für einen Server nur im eigenen Netz ohne TLS (siehe oben) entfällt der Dienst `caddy`. Der Dienst `sync` bekommt dann
-`ports: ["8787:8787"]` statt `expose`, und die Zeile `TEPHRA_SERVER_BEHIND_PROXY` wird entfernt.
+Für einen Server nur im eigenen Netz (siehe oben) entfällt der Dienst `caddy`. Der Dienst `sync` bekommt dann
+`ports: ["8787:8787"]` statt `expose`, und die Zeilen `TEPHRA_SERVER_BEHIND_PROXY` und `TEPHRA_SERVER_TLS` werden
+entfernt: Der Server bringt sein eigenes TLS mit.
 
 ### Mit systemd
 

@@ -235,8 +235,10 @@ enum SyncCommand {
     Status,
     /// Listet die Geräte des Kontos.
     Devices,
-    /// Entfernt ein Gerät vom Konto; es kann danach nicht mehr abgleichen.
+    /// Entfernt ein Gerät vom Konto; es kann danach nicht mehr abgleichen. Fragt nach dem Master-Passwort.
     RemoveDevice { id: uuid::Uuid },
+    /// Übernimmt einen neuen Fingerabdruck des Server-Zertifikats, etwa nachdem der Server neu eingerichtet wurde.
+    Trust,
     /// Trennt dieses Gerät vom Server; der lokale Tresor bleibt.
     Disconnect,
 }
@@ -935,9 +937,38 @@ async fn sync(path: &Path, command: SyncCommand) -> Fallible {
             }
         }
         SyncCommand::Status => match sync.connection().map_err(text)? {
-            Some(connection) => println!("Verbunden mit {} als {}.", connection.server, connection.username),
+            Some(connection) => {
+                println!("Verbunden mit {} als {}.", connection.server, connection.username);
+                match (connection.encrypted, connection.fingerprint) {
+                    (true, Some(fingerprint)) => println!("Verschlüsselt; Fingerabdruck des Servers:\n  {fingerprint}"),
+                    (true, None) => {
+                        println!("Verschlüsselt; der Server weist sich mit einem anerkannten Zertifikat aus.")
+                    }
+                    (false, _) => println!(
+                        "UNVERSCHLÜSSELT. Kann der Server HTTPS, steigt das Gerät beim nächsten Abgleich von selbst um."
+                    ),
+                }
+            }
             None => println!("Nicht mit einem Sync-Server verbunden."),
         },
+        SyncCommand::Trust => {
+            let known = sync.connection().map_err(text)?.and_then(|c| c.fingerprint);
+            let Some(current) = sync.server_fingerprint().await.map_err(text)? else {
+                return Err("Der Server ist nicht über HTTPS erreichbar.".into());
+            };
+            if known.as_deref() == Some(current.as_str()) {
+                println!("Der Fingerabdruck ist unverändert:\n  {current}");
+                return Ok(());
+            }
+            println!("Bisher:  {}", known.as_deref().unwrap_or("(keiner)"));
+            println!("Jetzt:   {current}");
+            println!("Vergleiche ihn mit der Zeile „TLS-Fingerabdruck“ im Protokoll des Servers.");
+            if !ui::yes(ui::read_line("Diesem Fingerabdruck vertrauen? [j/N] ".into()).await) {
+                return Err("Nicht übernommen.".into());
+            }
+            sync.trust_fingerprint(&current).map_err(text)?;
+            println!("Übernommen.");
+        }
         SyncCommand::Devices => {
             for device in sync.devices().await.map_err(text)? {
                 let current = if device.current { "  (dieses Gerät)" } else { "" };
@@ -945,7 +976,8 @@ async fn sync(path: &Path, command: SyncCommand) -> Fallible {
             }
         }
         SyncCommand::RemoveDevice { id } => {
-            sync.remove_device(id).await.map_err(text)?;
+            let master = password("Master-Passwort").await?;
+            sync.remove_device(id, &master).await.map_err(text)?;
             println!("Gerät entfernt. Bereits abgeholte Daten bleiben dort lesbar – bei Verlust des");
             println!("Geräts sollten Passwörter und Schlüssel der Hosts erneuert werden.");
         }

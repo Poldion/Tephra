@@ -29,6 +29,7 @@ Environment=TEPHRA_SERVER_REGISTRATION=invite
 # The reverse proxy sets X-Forwarded-For; login attempts are limited per address from that header.
 # Remove this line if nothing but the server itself sets that header.
 Environment=TEPHRA_SERVER_BEHIND_PROXY=true
+Environment=TEPHRA_SERVER_TLS=off
 StateDirectory=tephra-server
 StateDirectoryMode=0700
 WorkingDirectory=/var/lib/tephra-server

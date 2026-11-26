@@ -19,7 +19,7 @@ use tephra_mcp::audit::{self, Outcome};
 use tephra_mcp::policy::{AccessLevel, HostGrant, McpPolicy};
 use tephra_mcp::remote;
 use tephra_mcp::service::{Listener, Observer, ServiceEvent};
-use tephra_mcp::{printable, printable_lines, Action, ApprovalAnswer, ApprovalRequest, Approver};
+use tephra_mcp::{line_count, printable, printable_lines, Action, ApprovalAnswer, ApprovalRequest, Approver};
 use tokio::sync::oneshot;
 use tokio::task::AbortHandle;
 
@@ -28,8 +28,9 @@ const APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 /// So lange nach dem Erscheinen einer Rückfrage zählt keine Antwort: Ein
 /// Klick oder Tastendruck, der schon unterwegs war, galt nicht dieser Frage.
 const SETTLE: Duration = Duration::from_millis(600);
-/// Längste Anzeige von Befehlen, Eingabedaten und Dateiinhalten in der Rückfrage.
-const SHOWN_CHARS: usize = 2000;
+/// Längste Anzeige von Befehlen, Eingabedaten und Dateiinhalten in der Rückfrage. Längere Befehle legt der Dienst
+/// gar nicht erst vor; die Anzeige ist also vollständig.
+const SHOWN_CHARS: usize = tephra_mcp::MAX_APPROVAL_CHARS;
 
 // ------------------------------------------------------------------ Dienst
 
@@ -61,6 +62,15 @@ pub struct McpRequest {
     pub bytes: Option<u32>,
     /// Anfang der SHA-256-Prüfsumme der Datei, die geschrieben werden soll.
     pub checksum: Option<String>,
+    /// Zeilen und Zeichen von `subject` und `extra` im Original, damit die Oberfläche auf mehrzeilige Befehle
+    /// hinweisen kann.
+    pub subject_lines: u32,
+    pub subject_chars: u32,
+    pub extra_lines: u32,
+}
+
+fn count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 pub enum McpEvent {
@@ -131,8 +141,17 @@ fn view(id: u32, request: &ApprovalRequest) -> McpRequest {
             (McpRequestKind::HostKey, shown(&format!("{algorithm} {fingerprint}")), None, None, None)
         }
     };
+    let (subject_raw, extra_raw): (&str, Option<&str>) = match &request.action {
+        Action::Command { command, stdin } => (command, stdin.as_deref()),
+        Action::FileRead { path } => (path, None),
+        Action::FileWrite { path, preview, .. } => (path, Some(preview)),
+        Action::Session | Action::TrustHostKey { .. } => ("", None),
+    };
     McpRequest {
         id,
+        subject_lines: count(line_count(subject_raw)),
+        subject_chars: count(subject_raw.chars().count()),
+        extra_lines: count(extra_raw.map(line_count).unwrap_or(0)),
         device: String::new(),
         client: printable(&request.client_name, 60),
         host: printable(&request.host_label, 60),
@@ -556,6 +575,9 @@ pub fn mcp_remote_requests() -> Result<Vec<McpRequest>> {
             };
             McpRequest {
                 id: number,
+                subject_lines: count(line_count(&approval.subject)),
+                subject_chars: count(approval.subject.chars().count()),
+                extra_lines: count(approval.extra.as_deref().map(line_count).unwrap_or(0)),
                 device: printable(&approval.device_name, 60),
                 client: printable(&approval.client, 60),
                 host: printable(&approval.host, 60),

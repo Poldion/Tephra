@@ -211,6 +211,12 @@ pub struct ChangePasswordRequest {
     pub header: Bytes,
 }
 
+/// Ein anderes Gerät abmelden verlangt den Anmeldenachweis; ein gestohlenes Sitzungstoken genügt nicht.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoveDeviceRequest {
+    pub auth_key: Bytes,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteAccountRequest {
     pub auth_key: Bytes,

@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mcp.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `change`, `device_id`, `load`, `lock`, `policy`, `unknown_client`, `view`
+// These functions are ignored because they are not marked as `pub`: `change`, `count`, `device_id`, `load`, `lock`, `policy`, `unknown_client`, `view`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AppApprover`, `Service`, `Withdraw`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `approve`, `drop`
 
@@ -402,6 +402,12 @@ class McpRequest {
   /// Anfang der SHA-256-Prüfsumme der Datei, die geschrieben werden soll.
   final String? checksum;
 
+  /// Zeilen und Zeichen von `subject` und `extra` im Original, damit die Oberfläche auf mehrzeilige Befehle
+  /// hinweisen kann.
+  final int subjectLines;
+  final int subjectChars;
+  final int extraLines;
+
   const McpRequest({
     required this.id,
     required this.device,
@@ -412,6 +418,9 @@ class McpRequest {
     this.extra,
     this.bytes,
     this.checksum,
+    required this.subjectLines,
+    required this.subjectChars,
+    required this.extraLines,
   });
 
   @override
@@ -424,7 +433,10 @@ class McpRequest {
       subject.hashCode ^
       extra.hashCode ^
       bytes.hashCode ^
-      checksum.hashCode;
+      checksum.hashCode ^
+      subjectLines.hashCode ^
+      subjectChars.hashCode ^
+      extraLines.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -439,7 +451,10 @@ class McpRequest {
           subject == other.subject &&
           extra == other.extra &&
           bytes == other.bytes &&
-          checksum == other.checksum;
+          checksum == other.checksum &&
+          subjectLines == other.subjectLines &&
+          subjectChars == other.subjectChars &&
+          extraLines == other.extraLines;
 }
 
 /// Worum eine Rückfrage bittet.

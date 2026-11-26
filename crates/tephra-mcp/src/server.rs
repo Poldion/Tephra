@@ -932,6 +932,23 @@ impl McpServer {
             Action::FileRead { path } | Action::FileWrite { path, .. } => path.clone(),
             Action::Session | Action::TrustHostKey { .. } => String::new(),
         };
+        // Was sich nicht vollständig zeigen lässt, kann niemand verantwortlich bestätigen.
+        let too_long = match &action {
+            Action::Command { command, stdin } => {
+                command.chars().count() > crate::MAX_APPROVAL_CHARS
+                    || stdin.as_ref().is_some_and(|s| s.chars().count() > crate::MAX_APPROVAL_CHARS)
+            }
+            Action::FileRead { path } | Action::FileWrite { path, .. } => path.chars().count() > 4096,
+            Action::Session | Action::TrustHostKey { .. } => false,
+        };
+        if too_long {
+            let reason = "zu lang, um es zur Bestätigung vollständig anzuzeigen";
+            self.note(target, tool, &detail, Outcome::Denied, reason, started, None, 0);
+            return Err(format!(
+                "Refused: the command or its input is longer than {} characters and cannot be shown to the user for confirmation in full. Split it up or put it into a file first.",
+                crate::MAX_APPROVAL_CHARS
+            ));
+        }
         let request = ApprovalRequest {
             client_name: target.client_name.clone(),
             host_id: target.host_id,

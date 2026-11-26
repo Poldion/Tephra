@@ -75,7 +75,7 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 | **Snippets** | Gespeicherte Befehle mit `{{Platzhaltern}}`, für Sprachmodelle über MCP nutzbar |
 | **MCP** | Befehle, interaktive Sitzungen und Dateizugriff für Sprachmodelle; je Client und je Host; drei Zugriffsstufen, Bestätigung im Terminal oder in der App, die genau zeigt, was laufen wird, Protokoll, das vor jeder Ausführung geschrieben wird, Not-Aus, der auch laufende Sitzungen beendet; Geräte ohne Bildschirm lassen sich vom Telefon aus verwalten und bestätigen (`tephra mcp remote on`) |
 | **Abgleich** | Ende-zu-Ende-verschlüsselt, funktioniert offline und holt später nach, führt gleichzeitige Änderungen feldweise zusammen, Geräteliste mit Entfernen |
-| **Sync-Server** | Ein Programm mit einer SQLite-Datei; Registrierung offen, mit Einladungscode oder geschlossen; Obergrenzen je Konto; Fehlversuche bei der Anmeldung je Benutzername und Absender begrenzt |
+| **Sync-Server** | Ein Programm mit einer SQLite-Datei; TLS mit selbst erzeugtem Zertifikat, dessen Fingerabdruck sich die Geräte merken, ohne Zertifizierungsstelle; Registrierung offen, mit Einladungscode oder geschlossen; Obergrenzen je Konto; Fehlversuche bei der Anmeldung je Benutzername und Absender begrenzt |
 
 ## Schnellstart
 

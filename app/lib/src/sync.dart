@@ -195,7 +195,7 @@ class SyncController extends ChangeNotifier {
 
   Future<List<SyncDevice>> devices() => syncDevices();
 
-  Future<void> removeDevice(String id) => syncRemoveDevice(deviceId: id);
+  Future<void> removeDevice(String id, String password) => syncRemoveDevice(deviceId: id, password: password);
 }
 
 final syncState = SyncController();

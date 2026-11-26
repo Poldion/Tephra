@@ -103,8 +103,12 @@ jobs:
             --dart-define=TEPHRA_TEST_SSHD=127.0.0.1:2222:tester:geheim-tmux
           cd ..
           export TEPHRA_VAULT="$RUNNER_TEMP/second/vault.tephra" TEPHRA_PASSWORD="ein langes Master-Passwort"
-          if ./target/debug/tephra sync join http://127.0.0.2:8790 tester; then echo "plain http was accepted without --allow-http"; exit 1; fi
-          ./target/debug/tephra sync join --allow-http http://127.0.0.2:8790 tester
+          # The server speaks HTTPS with its own certificate: an http address ends up encrypted and pinned,
+          # without --allow-http.
+          ./target/debug/tephra sync join http://127.0.0.2:8790 tester
+          ./target/debug/tephra sync status | tee "$RUNNER_TEMP/status.txt"
+          grep -q 'https://127.0.0.2:8790' "$RUNNER_TEMP/status.txt"
+          grep -q 'Fingerabdruck' "$RUNNER_TEMP/status.txt"
           ./target/debug/tephra host list | grep Testserver
       # tephra daemon as on a server: without a terminal, with the password from a file, ended by SIGTERM.
       - name: Service without a terminal

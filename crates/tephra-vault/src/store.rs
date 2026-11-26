@@ -675,6 +675,18 @@ impl Vault {
     }
 
     /// Letzte vom Server vollständig abgeholte Revision.
+    /// Der Server hält für `id` eine Fassung, die sich nicht entschlüsseln lässt (Revision `rev`) – etwa Datenmüll
+    /// von jemandem mit einem gestohlenen Sitzungstoken. Die eigene, lesbare Fassung gilt weiter und wird beim
+    /// nächsten Hochladen über die des Servers geschrieben. `false`, wenn es hier keine lesbare Fassung gibt.
+    pub fn reclaim(&mut self, id: ItemId, rev: i64) -> Result<bool> {
+        if !self.state()?.records.contains_key(&id) || self.is_local_only(id)? {
+            return Ok(false);
+        }
+        self.conn
+            .execute("UPDATE items SET rev = ?2, dirty = 1 WHERE id = ?1", params![id.as_bytes().as_slice(), rev])?;
+        Ok(true)
+    }
+
     pub fn sync_cursor(&self) -> Result<i64> {
         Ok(get_meta(&self.conn, "sync_cursor")?
             .and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())

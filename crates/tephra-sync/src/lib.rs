@@ -14,13 +14,19 @@ use tephra_crypto::MasterKey;
 use tephra_sync_proto::{
     Bytes, ChangePasswordRequest, DeviceInfo, ErrorBody, EventsResponse, HeaderResponse, LoginRequest, LoginResponse,
     MAX_BATCH, MAX_WAIT_SECS, PreloginRequest, PreloginResponse, PullResponse, PushItem, PushOutcome, PushRequest,
-    PushResponse, RefreshRequest, RegisterRequest, Session, codes,
+    PushResponse, RefreshRequest, RegisterRequest, RemoveDeviceRequest, Session, codes,
 };
 use tephra_vault::{ApplyOutcome, VaultHeader};
 use tokio::sync::watch;
 use uuid::Uuid;
 
+mod pin;
+pub use pin::format as format_fingerprint;
+
 const SESSION_SECRET: &str = "sync/session";
+/// Version, mit der dieses Gerät zuletzt abgeglichen hat. Nach einem Update holt es einmal alles neu: Eine ältere
+/// Version überspringt Datensätze, die sie nicht kennt (neue Arten), und rückt trotzdem vor.
+const VERSION_SECRET: &str = "sync/client-version";
 /// Höchste Datenmenge einer Hochlade-Anfrage (vor der Base64-Kodierung).
 const MAX_PUSH_BYTES: usize = 8 * 1024 * 1024;
 /// Runden, in denen Konflikte zusammengeführt und erneut hochgeladen werden.
@@ -46,6 +52,10 @@ pub enum SyncError {
     Server { code: String, message: String },
     #[error("Unerwartete Antwort des Servers: {0}")]
     Protocol(String),
+    #[error(
+        "Der Sync-Server weist sich mit einem anderen Zertifikat aus als bisher. Wurde er neu eingerichtet, übernimm den neuen Fingerabdruck (Kommandozeile: „tephra sync trust“, App: im Dialog des Abgleichs); sonst nicht verbinden – jemand könnte sich dazwischengeschaltet haben"
+    )]
+    CertificateChanged,
     #[error(transparent)]
     Core(#[from] CoreError),
 }
@@ -70,6 +80,10 @@ struct Stored {
     refresh_token: String,
     /// Stand des Tresorkopfes, den dieses Gerät zuletzt übernommen hat.
     header_rev: i64,
+    /// Fingerabdruck des Server-Zertifikats (SHA-256, Hex), dem dieses Gerät vertraut. Fehlt er bei einer
+    /// https-Adresse, muss eine anerkannte Zertifizierungsstelle für den Server bürgen.
+    #[serde(default)]
+    pin: Option<String>,
 }
 
 /// Auskunft über die Verbindung, ohne Tokens.
@@ -78,6 +92,10 @@ pub struct Connection {
     pub server: String,
     pub username: String,
     pub device_id: Uuid,
+    /// Ob die Verbindung verschlüsselt ist (https).
+    pub encrypted: bool,
+    /// Fingerabdruck des Server-Zertifikats, dem dieses Gerät vertraut (`AB:CD:…`).
+    pub fingerprint: Option<String>,
 }
 
 /// Ergebnis eines Abgleichs.
@@ -91,6 +109,8 @@ pub struct SyncReport {
     pub merged: usize,
     /// Datensätze, die sich nicht entschlüsseln ließen und übersprungen wurden.
     pub unreadable: usize,
+    /// Datensätze, deren Fassung beim Server zerstört war und die von hier aus wiederhergestellt werden.
+    pub reclaimed: usize,
     /// Vom Server abgelehnte Datensätze mit Begründung.
     pub rejected: Vec<(ItemId, String)>,
 }
@@ -101,6 +121,63 @@ pub struct Sync {
     http: reqwest::Client,
     /// Sorgt dafür, dass immer nur eine Aufgabe die Sitzung verlängert.
     refreshing: std::sync::Arc<tokio::sync::Mutex<()>>,
+    /// Client für den Server mit festem Fingerabdruck, einmal gebaut.
+    pinned: std::sync::Arc<std::sync::Mutex<Option<(String, reqwest::Client)>>>,
+    /// Wann zuletzt versucht wurde, von http auf https umzusteigen.
+    probed: std::sync::Arc<std::sync::Mutex<Option<std::time::Instant>>>,
+}
+
+/// So oft versucht ein Gerät mit einer http-Adresse, auf https umzusteigen.
+const PROBE_EVERY: Duration = Duration::from_secs(3600);
+
+/// Fasst einen Fehler beim Senden samt seiner Ursachen zusammen; ein abweichender Fingerabdruck wird erkannt.
+fn network(error: reqwest::Error) -> SyncError {
+    let mut text = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    if text.contains(pin::MISMATCH) { SyncError::CertificateChanged } else { SyncError::Network(text) }
+}
+
+fn is_local(url: &reqwest::Url) -> bool {
+    matches!(url.host_str().unwrap_or_default(), "localhost" | "127.0.0.1" | "[::1]")
+}
+
+/// Dieselbe Adresse mit https.
+fn https_of(server: &str) -> Option<String> {
+    let mut url = reqwest::Url::parse(server).ok()?;
+    if url.scheme() == "https" {
+        return Some(server.to_string());
+    }
+    url.set_scheme("https").ok()?;
+    Some(url.as_str().trim_end_matches('/').to_string())
+}
+
+/// Findet heraus, wie ein Gerät mit dem Server sprechen soll: Adresse und, bei einem selbst erzeugten
+/// Zertifikat, dessen Fingerabdruck. Eine http-Adresse wird auf https gehoben, wenn der Server es kann.
+async fn establish(http: &reqwest::Client, server: &str, allow_http: bool) -> Result<(String, Option<String>)> {
+    let server = normalize_url(server, true)?;
+    let url = reqwest::Url::parse(&server).map_err(|e| SyncError::InvalidUrl(e.to_string()))?;
+    if url.scheme() == "https" {
+        // Bürgt eine anerkannte Stelle, gilt deren Prüfung; sonst das Zertifikat, das jetzt kommt.
+        if http.get(format!("{server}/healthz")).send().await.is_ok() {
+            return Ok((server, None));
+        }
+        let pin = pin::probe(&server).await.ok_or_else(|| SyncError::Network(format!("{server} antwortet nicht")))?;
+        return Ok((server, Some(pin::to_text(&pin))));
+    }
+    if is_local(&url) {
+        return Ok((server, None));
+    }
+    if let Some(secure) = https_of(&server)
+        && let Some(pin) = pin::probe(&secure).await
+    {
+        return Ok((secure, Some(pin::to_text(&pin))));
+    }
+    if allow_http { Ok((server, None)) } else { Err(SyncError::InsecureUrl) }
 }
 
 /// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
@@ -164,9 +241,9 @@ fn http_client() -> reqwest::Client {
 
 /// Wertet eine Antwort aus: Erfolg als `T`, Fehler als [`SyncError`].
 async fn parse<T: DeserializeOwned>(response: reqwest::Result<reqwest::Response>) -> Result<T> {
-    let response = response.map_err(|e| SyncError::Network(e.to_string()))?;
+    let response = response.map_err(network)?;
     let status = response.status();
-    let body = response.bytes().await.map_err(|e| SyncError::Network(e.to_string()))?;
+    let body = response.bytes().await.map_err(network)?;
     if status.is_success() {
         let body: &[u8] = if body.is_empty() { b"null" } else { &body };
         return serde_json::from_slice(body).map_err(|e| SyncError::Protocol(e.to_string()));
@@ -184,6 +261,11 @@ fn is_unreadable(error: &CoreError) -> bool {
     matches!(error, CoreError::Vault(VaultError::Crypto(_) | VaultError::Record(_) | VaultError::ClockSkew))
 }
 
+/// Die Fassung des Servers lässt sich nicht entschlüsseln: Sie stammt nicht von einem Gerät dieses Tresors.
+fn is_forged(error: &CoreError) -> bool {
+    matches!(error, CoreError::Vault(VaultError::Crypto(_)))
+}
+
 /// Kennzeichnet den Stand der noch nicht hochgeladenen Datensätze.
 fn fingerprint(dirty: &[tephra_vault::DirtyItem]) -> Vec<(ItemId, usize, u8)> {
     dirty.iter().map(|item| (item.id, item.blob.len(), item.blob.last().copied().unwrap_or(0))).collect()
@@ -199,7 +281,66 @@ fn header_from_bytes(bytes: &[u8]) -> Result<VaultHeader> {
 
 impl Sync {
     pub fn new(core: Core) -> Self {
-        Self { core, http: http_client(), refreshing: Default::default() }
+        Self {
+            core,
+            http: http_client(),
+            refreshing: Default::default(),
+            pinned: Default::default(),
+            probed: Default::default(),
+        }
+    }
+
+    /// Der Client für den gespeicherten Server: mit festem Fingerabdruck, falls einer hinterlegt ist.
+    fn client(&self, stored: &Stored) -> reqwest::Client {
+        let Some(pin) = stored.pin.as_deref().and_then(pin::from_text) else { return self.http.clone() };
+        let text = pin::to_text(&pin);
+        let mut cached = self.pinned.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((known, client)) = cached.as_ref()
+            && *known == text
+        {
+            return client.clone();
+        }
+        let (client, _) = pin::client(Some(pin), Duration::from_secs(MAX_WAIT_SECS + 20));
+        *cached = Some((text, client.clone()));
+        client
+    }
+
+    /// Steigt von http auf https um, sobald der Server es kann: Der Fingerabdruck des ersten Kontakts gilt danach
+    /// (wie bei SSH). Höchstens einmal je [`PROBE_EVERY`]; Fehler ändern nichts.
+    async fn upgrade(&self) -> Result<()> {
+        let stored = self.require()?;
+        let Ok(url) = reqwest::Url::parse(&stored.server) else { return Ok(()) };
+        if url.scheme() != "http" || is_local(&url) {
+            return Ok(());
+        }
+        {
+            let mut probed = self.probed.lock().unwrap_or_else(|p| p.into_inner());
+            if probed.is_some_and(|at| at.elapsed() < PROBE_EVERY) {
+                return Ok(());
+            }
+            *probed = Some(std::time::Instant::now());
+        }
+        let Some(secure) = https_of(&stored.server) else { return Ok(()) };
+        let Some(pin) = pin::probe(&secure).await else { return Ok(()) };
+        tracing::info!(server = %secure, fingerprint = %pin::format(&pin), "Sync-Server spricht HTTPS; umgestiegen");
+        self.store(&Stored { server: secure, pin: Some(pin::to_text(&pin)), ..self.require()? })
+    }
+
+    /// Fingerabdruck, mit dem sich der Server gerade ausweist (`AB:CD:…`); `None` ohne https.
+    pub async fn server_fingerprint(&self) -> Result<Option<String>> {
+        let stored = self.require()?;
+        if !stored.server.starts_with("https://") {
+            return Ok(None);
+        }
+        Ok(pin::probe(&stored.server).await.map(|pin| pin::format(&pin)))
+    }
+
+    /// Übernimmt einen neuen Fingerabdruck, etwa nachdem der Server neu eingerichtet wurde. Der Nutzer muss ihn
+    /// vorher mit dem vergleichen, den der Server beim Start ins Protokoll schreibt.
+    pub fn trust_fingerprint(&self, fingerprint: &str) -> Result<()> {
+        let pin = pin::from_text(fingerprint).ok_or_else(|| SyncError::Protocol("Ungültiger Fingerabdruck".into()))?;
+        let stored = self.require()?;
+        self.store(&Stored { pin: Some(pin::to_text(&pin)), ..stored })
     }
 
     fn stored(&self) -> Result<Option<Stored>> {
@@ -218,7 +359,13 @@ impl Sync {
 
     /// Mit welchem Server dieses Gerät verbunden ist, falls überhaupt.
     pub fn connection(&self) -> Result<Option<Connection>> {
-        Ok(self.stored()?.map(|s| Connection { server: s.server, username: s.username, device_id: s.device_id }))
+        Ok(self.stored()?.map(|s| Connection {
+            encrypted: s.server.starts_with("https://"),
+            fingerprint: s.pin.as_deref().and_then(pin::from_text).map(|pin| pin::format(&pin)),
+            server: s.server,
+            username: s.username,
+            device_id: s.device_id,
+        }))
     }
 
     /// Legt auf dem Server ein Konto für den bestehenden Tresor an und
@@ -236,7 +383,7 @@ impl Sync {
         if self.stored()?.is_some() {
             return Err(SyncError::AlreadyConnected);
         }
-        let server = normalize_url(server, allow_http)?;
+        let (server, pin) = establish(&self.http, server, allow_http).await?;
         let header = self.core.with_vault(|v| Ok(v.header().clone()))?;
         // Das Passwort muss wirklich das des Tresors sein: Sonst entstünde ein
         // Konto, an dem sich kein weiteres Gerät je anmelden könnte.
@@ -250,8 +397,11 @@ impl Sync {
             device_name: device_name.to_string(),
             invite: invite.map(str::to_string),
         };
-        let session: Session =
-            parse(self.http.post(format!("{server}/v1/accounts")).json(&request).send().await).await?;
+        let http = match pin.as_deref().and_then(pin::from_text) {
+            Some(pin) => pin::client(Some(pin), Duration::from_secs(60)).0,
+            None => self.http.clone(),
+        };
+        let session: Session = parse(http.post(format!("{server}/v1/accounts")).json(&request).send().await).await?;
         // Alles, was lokal schon existiert, muss zum neuen Konto hochgeladen werden.
         self.core.with_vault(|v| v.reset_sync_state())?;
         self.store(&Stored {
@@ -262,6 +412,7 @@ impl Sync {
             access_token: session.access_token,
             refresh_token: session.refresh_token,
             header_rev: 1,
+            pin,
         })
     }
 
@@ -279,8 +430,11 @@ impl Sync {
         if path.exists() {
             return Err(VaultError::AlreadyExists.into());
         }
-        let server = normalize_url(server, allow_http)?;
-        let http = http_client();
+        let (server, pin) = establish(&http_client(), server, allow_http).await?;
+        let http = match pin.as_deref().and_then(pin::from_text) {
+            Some(pin) => pin::client(Some(pin), Duration::from_secs(60)).0,
+            None => http_client(),
+        };
         let username = username.trim().to_string();
         let prelogin: PreloginResponse = parse(
             http.post(format!("{server}/v1/auth/prelogin"))
@@ -310,7 +464,7 @@ impl Sync {
         // Öffnet den Vault Key und prüft zugleich, dass der Kopf echt ist.
         let key = header.open_with_password(password)?;
         let core = Core::from_vault(Vault::create_with_header(path, header, key)?);
-        let sync = Sync { core: core.clone(), http, refreshing: Default::default() };
+        let sync = Sync::new(core.clone());
         sync.store(&Stored {
             server,
             username,
@@ -319,6 +473,7 @@ impl Sync {
             access_token: login.session.access_token,
             refresh_token: login.session.refresh_token,
             header_rev: login.header_rev,
+            pin,
         })?;
         sync.sync_once().await?;
         Ok(core)
@@ -330,9 +485,9 @@ impl Sync {
     /// Server wird nur übernommen, wenn er zu diesem Tresor gehört.
     pub async fn reconnect(&self, password: &str, device_name: &str) -> Result<()> {
         let stored = self.require()?;
+        let http = self.client(&stored);
         let prelogin: PreloginResponse = parse(
-            self.http
-                .post(format!("{}/v1/auth/prelogin", stored.server))
+            http.post(format!("{}/v1/auth/prelogin", stored.server))
                 .json(&PreloginRequest { username: stored.username.clone() })
                 .send()
                 .await,
@@ -342,8 +497,7 @@ impl Sync {
         let auth_key =
             MasterKey::derive(password, &prelogin.salt.0, prelogin.kdf).map_err(VaultError::from)?.auth_key();
         let login: LoginResponse = parse(
-            self.http
-                .post(format!("{}/v1/auth/login", stored.server))
+            http.post(format!("{}/v1/auth/login", stored.server))
                 .json(&LoginRequest {
                     username: stored.username.clone(),
                     auth_key: Bytes(auth_key.as_bytes().to_vec()),
@@ -372,7 +526,8 @@ impl Sync {
         build: impl Fn(&reqwest::Client, &str) -> reqwest::RequestBuilder,
     ) -> Result<T> {
         let stored = self.require()?;
-        match parse(build(&self.http, &stored.server).bearer_auth(&stored.access_token).send().await).await {
+        let http = self.client(&stored);
+        match parse(build(&http, &stored.server).bearer_auth(&stored.access_token).send().await).await {
             Err(error) if is_unauthorized(&error) => {}
             other => return other,
         }
@@ -381,15 +536,14 @@ impl Sync {
         let _refreshing = self.refreshing.lock().await;
         let current = self.require()?;
         if current.access_token != stored.access_token {
-            return match parse(build(&self.http, &current.server).bearer_auth(&current.access_token).send().await).await
-            {
+            let http = self.client(&current);
+            return match parse(build(&http, &current.server).bearer_auth(&current.access_token).send().await).await {
                 Err(error) if is_unauthorized(&error) => Err(SyncError::SessionExpired),
                 other => other,
             };
         }
         let refreshed: Result<Session> = parse(
-            self.http
-                .post(format!("{}/v1/auth/refresh", stored.server))
+            http.post(format!("{}/v1/auth/refresh", stored.server))
                 .json(&RefreshRequest { refresh_token: stored.refresh_token.clone() })
                 .send()
                 .await,
@@ -402,7 +556,7 @@ impl Sync {
         };
         let stored = Stored { access_token: session.access_token, refresh_token: session.refresh_token, ..stored };
         self.store(&stored)?;
-        match parse(build(&self.http, &stored.server).bearer_auth(&stored.access_token).send().await).await {
+        match parse(build(&http, &stored.server).bearer_auth(&stored.access_token).send().await).await {
             Err(error) if is_unauthorized(&error) => Err(SyncError::SessionExpired),
             other => other,
         }
@@ -411,6 +565,8 @@ impl Sync {
     /// Gleicht einmal vollständig ab: abholen, zusammenführen, hochladen.
     pub async fn sync_once(&self) -> Result<SyncReport> {
         let mut report = SyncReport::default();
+        self.upgrade().await?;
+        self.after_update()?;
         self.pull(&mut report).await?;
 
         for _ in 0..MAX_ROUNDS {
@@ -465,6 +621,11 @@ impl Sync {
                             match self.core.with_vault(|v| v.apply_remote(id, current.rev, &current.blob.0)) {
                                 Ok(ApplyOutcome::Merged) => report.merged += 1,
                                 Ok(_) => {}
+                                Err(error)
+                                    if is_forged(&error) && self.core.with_vault(|v| v.reclaim(id, current.rev))? =>
+                                {
+                                    report.reclaimed += 1;
+                                }
                                 Err(error) if is_unreadable(&error) => report.unreadable += 1,
                                 Err(error) => return Err(error.into()),
                             }
@@ -480,6 +641,19 @@ impl Sync {
         Ok(report)
     }
 
+    /// Nach einem Update dieses Geräts: einmal alles neu abholen.
+    fn after_update(&self) -> Result<()> {
+        let version = env!("CARGO_PKG_VERSION").as_bytes();
+        if self.core.with_vault(|v| v.get_secret(VERSION_SECRET))?.as_deref() == Some(version) {
+            return Ok(());
+        }
+        self.core.with_vault(|v| {
+            v.set_sync_cursor(0)?;
+            v.put_secret(VERSION_SECRET, version)
+        })?;
+        Ok(())
+    }
+
     async fn pull(&self, report: &mut SyncReport) -> Result<()> {
         loop {
             let cursor = self.core.with_vault(|v| v.sync_cursor())?;
@@ -493,6 +667,13 @@ impl Sync {
                     Ok(ApplyOutcome::Inserted | ApplyOutcome::Updated) => report.pulled += 1,
                     Ok(ApplyOutcome::Merged) => report.merged += 1,
                     Ok(ApplyOutcome::Unchanged) => {}
+                    // Zerstört, aber hier noch heil: Die eigene Fassung wird wieder hochgeladen.
+                    Err(error)
+                        if is_forged(&error) && self.core.with_vault(|v| v.reclaim(ItemId(item.id), item.rev))? =>
+                    {
+                        tracing::warn!(id = %item.id, "Fassung beim Server ließ sich nicht entschlüsseln; die eigene wird wiederhergestellt");
+                        report.reclaimed += 1;
+                    }
                     // Ein unlesbarer Datensatz darf den Abgleich aller übrigen nicht aufhalten.
                     Err(error) if is_unreadable(&error) => {
                         tracing::warn!(id = %item.id, %error, "Datensatz vom Server ließ sich nicht übernehmen");
@@ -606,8 +787,14 @@ impl Sync {
 
     /// Entfernt ein Gerät vom Konto; es kann danach nicht mehr abgleichen.
     /// Daten, die es bereits abgeholt hat, bleiben dort lesbar.
-    pub async fn remove_device(&self, device: Uuid) -> Result<()> {
-        self.authed::<Option<()>>(|http, server| http.delete(format!("{server}/v1/devices/{device}"))).await?;
+    /// Meldet ein anderes Gerät ab. Dafür braucht es das Master-Passwort: Der Server verlangt den Anmeldenachweis,
+    /// damit ein gestohlenes Sitzungstoken nicht genügt, um alle Geräte hinauszuwerfen.
+    pub async fn remove_device(&self, device: Uuid, password: &str) -> Result<()> {
+        let header = self.core.with_vault(|v| Ok(v.header().clone()))?;
+        header.open_with_password(password)?;
+        let request = RemoveDeviceRequest { auth_key: Bytes(header.auth_key(password)?.as_bytes().to_vec()) };
+        self.authed::<Option<()>>(|http, server| http.delete(format!("{server}/v1/devices/{device}")).json(&request))
+            .await?;
         Ok(())
     }
 

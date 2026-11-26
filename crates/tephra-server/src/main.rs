@@ -6,8 +6,10 @@ use tephra_server::{Config, Registration};
 
 /// Sync-Server von Tephra.
 ///
-/// Der Server spricht einfaches HTTP. Für den Betrieb im Netz gehört ein
-/// Reverse-Proxy mit TLS davor (siehe `deploy/`).
+/// Der Server spricht HTTPS mit einem Zertifikat, das er beim ersten Start
+/// selbst erzeugt; die Geräte merken sich dessen Fingerabdruck. Auf demselben
+/// Port nimmt er (mit `--tls auto`) auch noch einfaches HTTP an, damit ältere
+/// Geräte umsteigen können. Hinter einem Reverse-Proxy: `--tls off`.
 #[derive(Parser)]
 #[command(name = "tephra-server", version)]
 struct Cli {
@@ -36,8 +38,31 @@ struct Cli {
     #[arg(long, env = "TEPHRA_SERVER_BEHIND_PROXY", global = true)]
     behind_proxy: bool,
 
+    /// Verschlüsselung: `auto` spricht HTTPS und HTTP auf demselben Port, `only` nur HTTPS, `off` nur HTTP.
+    #[arg(long, env = "TEPHRA_SERVER_TLS", value_enum, default_value_t = TlsArg::Auto, global = true)]
+    tls: TlsArg,
+
+    /// Ordner für das selbst erzeugte Zertifikat (Vorgabe: Ordner `tls` neben der Datenbank).
+    #[arg(long, env = "TEPHRA_SERVER_TLS_DIR", global = true)]
+    tls_dir: Option<PathBuf>,
+
+    /// Eigenes Zertifikat (PEM, mit Kette) statt des selbst erzeugten; braucht `--tls-key`.
+    #[arg(long, env = "TEPHRA_SERVER_TLS_CERT", requires = "tls_key", global = true)]
+    tls_cert: Option<PathBuf>,
+
+    /// Privater Schlüssel zu `--tls-cert` (PEM).
+    #[arg(long, env = "TEPHRA_SERVER_TLS_KEY", requires = "tls_cert", global = true)]
+    tls_key: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum TlsArg {
+    Auto,
+    Only,
+    Off,
 }
 
 #[derive(Subcommand)]
@@ -100,8 +125,30 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 ..Config::default()
             };
             let listener = tokio::net::TcpListener::bind(&cli.bind).await?;
-            tracing::info!(bind = %listener.local_addr()?, db = %cli.db.display(), "Sync-Server gestartet");
-            tephra_server::serve(listener, db, config, shutdown_signal()).await?;
+            let acceptor = if cli.tls == TlsArg::Off {
+                None
+            } else {
+                let dir = cli.tls_dir.clone().unwrap_or_else(|| {
+                    cli.db
+                        .parent()
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .unwrap_or(std::path::Path::new("."))
+                        .join("tls")
+                });
+                let own = cli.tls_cert.clone().zip(cli.tls_key.clone());
+                let identity = tephra_server::tls::identity(&dir, own)?;
+                // Damit lässt sich prüfen, ob die Geräte wirklich mit diesem Server sprechen.
+                tracing::info!(fingerprint = %identity.fingerprint, "TLS-Fingerabdruck (SHA-256)");
+                Some(identity.acceptor)
+            };
+            let mode = match cli.tls {
+                TlsArg::Auto => "HTTPS und HTTP",
+                TlsArg::Only => "nur HTTPS",
+                TlsArg::Off => "nur HTTP",
+            };
+            tracing::info!(bind = %listener.local_addr()?, db = %cli.db.display(), tls = mode, "Sync-Server gestartet");
+            tephra_server::serve_tls(listener, db, config, acceptor, cli.tls != TlsArg::Only, shutdown_signal())
+                .await?;
         }
         Command::Invite => println!("{}", db.create_invite()?),
         Command::Accounts => {

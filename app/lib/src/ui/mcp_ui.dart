@@ -967,6 +967,11 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
   bool _closed = false;
   Timer? _settle;
 
+  /// Ob die grauen Kästen bis zum Ende zu sehen waren. Erst dann lässt sich erlauben – sonst könnte unten im
+  /// Kasten etwas stehen, das niemand gelesen hat.
+  bool _subjectSeen = false;
+  bool _extraSeen = false;
+
   @override
   void initState() {
     super.initState();
@@ -1001,19 +1006,13 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final request = widget.request;
-    Widget block(String text, {Key? key}) => Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 220),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: SingleChildScrollView(
-        child: SelectableText(text, key: key, style: monoStyle(context)),
-      ),
-    );
+    Widget block(String text, {Key? key, required VoidCallback onSeen}) =>
+        _GatedBlock(text: text, textKey: key, onSeen: onSeen);
     final size = request.bytes;
+    final hasExtra = request.extra != null;
+    final allSeen = (request.subject.isEmpty || _subjectSeen) && (!hasExtra || _extraSeen);
+    final canAllow = _ready && allSeen;
+    final lines = request.subjectLines;
     final (String what, String? more) = switch (request.kind) {
       McpRequestKind.command => (
         t('Befehl ausführen:', 'Run a command:'),
@@ -1051,9 +1050,24 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(what),
+            if (request.subject.isNotEmpty && request.kind == McpRequestKind.command && lines > 1) ...[
+              const SizedBox(height: 4),
+              Text(
+                t(
+                  'Achtung: $lines Zeilen, ${request.subjectChars} Zeichen – jede Zeile wird ausgeführt.',
+                  'Careful: $lines lines, ${request.subjectChars} characters – every line runs.',
+                ),
+                key: const Key('mcp-approval-lines'),
+                style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600),
+              ),
+            ],
             if (request.subject.isNotEmpty) ...[
               const SizedBox(height: 8),
-              block(request.subject, key: const Key('mcp-approval-subject')),
+              block(
+                request.subject,
+                key: const Key('mcp-approval-subject'),
+                onSeen: () => setState(() => _subjectSeen = true),
+              ),
             ],
             if (request.kind == McpRequestKind.session) ...[
               const SizedBox(height: 8),
@@ -1069,7 +1083,18 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
               const SizedBox(height: 12),
               Text(more),
               const SizedBox(height: 8),
-              block(request.extra!),
+              block(request.extra!, onSeen: () => setState(() => _extraSeen = true)),
+            ],
+            if (!allSeen) ...[
+              const SizedBox(height: 8),
+              Text(
+                t(
+                  'Scrolle im grauen Feld bis zum Ende, um erlauben zu können.',
+                  'Scroll to the end of the grey box to be able to allow.',
+                ),
+                key: const Key('mcp-approval-scroll'),
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
             ],
             const SizedBox(height: 12),
             Text(
@@ -1085,12 +1110,12 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
       actions: [
         TextButton(
           key: const Key('mcp-approval-session'),
-          onPressed: _ready ? () => _answer(McpAnswer.session) : null,
+          onPressed: canAllow ? () => _answer(McpAnswer.session) : null,
           child: Text(t('Genau dies für diese Verbindung', 'Exactly this for this connection')),
         ),
         TextButton(
           key: const Key('mcp-approval-once'),
-          onPressed: _ready ? () => _answer(McpAnswer.once) : null,
+          onPressed: canAllow ? () => _answer(McpAnswer.once) : null,
           child: Text(t('Einmal erlauben', 'Allow once')),
         ),
         FilledButton(
@@ -1100,6 +1125,68 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
           child: Text(t('Ablehnen', 'Refuse')),
         ),
       ],
+    );
+  }
+}
+
+/// Grauer Kasten mit Text vom Modell. Meldet einmal, sobald sein Ende zu sehen war – sofort, wenn alles
+/// hineinpasst, sonst nach dem Scrollen bis unten.
+class _GatedBlock extends StatefulWidget {
+  const _GatedBlock({required this.text, required this.onSeen, this.textKey});
+
+  final String text;
+  final Key? textKey;
+  final VoidCallback onSeen;
+
+  @override
+  State<_GatedBlock> createState() => _GatedBlockState();
+}
+
+class _GatedBlockState extends State<_GatedBlock> {
+  final _scroll = ScrollController();
+  bool _reported = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_check);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _check() {
+    if (_reported || !mounted || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    if (position.pixels >= position.maxScrollExtent - 4) {
+      _reported = true;
+      widget.onSeen();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 220),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Scrollbar(
+        controller: _scroll,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          child: SelectableText(widget.text, key: widget.textKey, style: monoStyle(context)),
+        ),
+      ),
     );
   }
 }

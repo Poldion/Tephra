@@ -5,6 +5,7 @@
 //! Inhalte kann er nicht lesen; Konflikte lösen die Clients.
 
 pub mod db;
+pub mod tls;
 
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
@@ -23,7 +24,8 @@ use tephra_crypto::KdfParams;
 use tephra_sync_proto::{
     Bytes, ChangePasswordRequest, DeleteAccountRequest, DeviceInfo, ErrorBody, EventsResponse, HeaderResponse,
     LoginRequest, LoginResponse, MAX_BATCH, MAX_BLOB_BYTES, MAX_WAIT_SECS, PreloginRequest, PreloginResponse,
-    PullResponse, PushOutcome, PushRequest, PushResponse, RefreshRequest, RegisterRequest, Session, codes,
+    PullResponse, PushOutcome, PushRequest, PushResponse, RefreshRequest, RegisterRequest, RemoveDeviceRequest,
+    Session, codes,
 };
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -413,7 +415,25 @@ async fn remove_device(
     State(state): State<Shared>,
     device: Device,
     Path(id): Path<Uuid>,
+    body: axum::body::Bytes,
 ) -> Result<StatusCode, ApiError> {
+    // Sich selbst abmelden darf jedes Gerät; ein anderes nur mit dem Anmeldenachweis. Sonst könnte jemand mit
+    // einem mitgeschnittenen Sitzungstoken alle echten Geräte hinauswerfen.
+    if id != device.id {
+        let request: RemoveDeviceRequest = serde_json::from_slice(&body).map_err(|_| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                codes::INVALID_REQUEST,
+                "Ein anderes Gerät abzumelden verlangt das Master-Passwort (Version 0.12 oder neuer)",
+            )
+        })?;
+        let key = format!("password:{}", device.account);
+        state.guard(&key, state.config.max_attempts)?;
+        if !state.db().verify_auth(Some(device.account), &request.auth_key.0)? {
+            state.note_attempt(&key);
+            return Err(ApiError::credentials());
+        }
+    }
     if state.db().delete_device(device.account, id)? {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -577,7 +597,22 @@ pub async fn serve(
     config: Config,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
+    serve_tls(listener, db, config, None, true, shutdown).await
+}
+
+/// Wie [`serve`], mit TLS: `acceptor` nimmt verschlüsselte Verbindungen an; `plain` lässt auf demselben Port
+/// zusätzlich einfaches HTTP zu (siehe [`tls::TlsMode`]).
+pub async fn serve_tls(
+    listener: tokio::net::TcpListener,
+    db: Db,
+    config: Config,
+    acceptor: Option<tokio_rustls::TlsAcceptor>,
+    plain: bool,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    use axum::serve::ListenerExt;
     let app = app(db, config).map_err(std::io::Error::other)?;
+    let listener = tls::MixedListener::new(listener, acceptor, plain)?.tap_io(|_| {});
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown)
         .await

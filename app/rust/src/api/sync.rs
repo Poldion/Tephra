@@ -17,6 +17,10 @@ pub struct SyncConnection {
     pub server: String,
     pub username: String,
     pub device_id: String,
+    /// Ob die Verbindung verschlüsselt ist (https).
+    pub encrypted: bool,
+    /// Fingerabdruck des Server-Zertifikats, dem dieses Gerät vertraut (`AB:CD:…`).
+    pub fingerprint: Option<String>,
 }
 
 /// Ein Gerät des Kontos.
@@ -81,7 +85,21 @@ pub fn sync_connection() -> Result<Option<SyncConnection>> {
         server: connection.server,
         username: connection.username,
         device_id: connection.device_id.to_string(),
+        encrypted: connection.encrypted,
+        fingerprint: connection.fingerprint,
     }))
+}
+
+/// Fingerabdruck, mit dem sich der Server gerade ausweist; `None` ohne https.
+pub async fn sync_server_fingerprint() -> Result<Option<String>> {
+    let sync = client()?;
+    Ok(RUNTIME.spawn(async move { sync.server_fingerprint().await }).await??)
+}
+
+/// Übernimmt einen neuen Fingerabdruck des Servers, nachdem der Nutzer ihn verglichen hat.
+#[frb(sync)]
+pub fn sync_trust_fingerprint(fingerprint: String) -> Result<()> {
+    Ok(client()?.trust_fingerprint(&fingerprint)?)
 }
 
 /// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
@@ -156,10 +174,11 @@ pub async fn sync_devices() -> Result<Vec<SyncDevice>> {
 }
 
 /// Entfernt ein Gerät vom Konto. Was es schon abgeholt hat, bleibt dort lesbar.
-pub async fn sync_remove_device(device_id: String) -> Result<()> {
+/// Meldet ein anderes Gerät ab; dafür verlangt der Server das Master-Passwort.
+pub async fn sync_remove_device(device_id: String, password: String) -> Result<()> {
     let device = device_id.parse().map_err(|_| anyhow!("Ungültige Kennung"))?;
     let sync = client()?;
-    RUNTIME.spawn(async move { sync.remove_device(device).await }).await??;
+    RUNTIME.spawn(async move { sync.remove_device(device, &password).await }).await??;
     Ok(())
 }
 

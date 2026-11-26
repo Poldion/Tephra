@@ -107,6 +107,33 @@ Der Server begrenzt Fehlversuche bei der Anmeldung je Benutzername und Absender;
 gebremst, ein Dritter kann dich also nicht mit falschen Passwörtern aussperren. Hinter einem Reverse-Proxy braucht es
 dafür `--behind-proxy`, sonst scheinen alle Anfragen vom Proxy zu kommen.
 
+### Jemand im selben Netz
+
+Jemand kann den Verkehr zwischen einem Gerät und dem Sync-Server mitlesen und verändern – ein anderes Gerät im
+Heimnetz, ein Gast im WLAN, ein kompromittierter Router.
+
+**Vorhanden:**
+
+- **TLS mit festgehaltenem Zertifikat.** Der Server erzeugt sein Zertifikat selbst; ein Gerät merkt sich beim ersten
+  Kontakt dessen SHA-256-Fingerabdruck und nimmt danach nur noch genau dieses Zertifikat an (die Signatur im Handshake
+  wird zusätzlich geprüft). Ein anderes Zertifikat stoppt den Abgleich, bis der Nutzer es ausdrücklich übernimmt.
+  Geräte, die noch über `http://` verbunden sind, steigen von selbst auf HTTPS um, sobald der Server es anbietet.
+- Der Inhalt des Tresors bleibt in jedem Fall geschützt: Datensätze und Kopf sind auf dem Gerät verschlüsselt und
+  authentifiziert.
+- **Andere Geräte abmelden verlangt den Anmeldenachweis**, nicht nur ein Sitzungstoken.
+- **Zerstörte Serverkopien werden repariert.** Hält der Server eine Fassung, die sich nicht entschlüsseln lässt (etwa
+  Datenmüll, mit einem gestohlenen Sitzungstoken hochgeladen), lädt ein Gerät mit gültiger Fassung sie erneut hoch.
+
+**Nicht geschützt:**
+
+- **Der erste Kontakt.** Wer genau dann dazwischen sitzt, wenn ein Gerät sich zum ersten Mal verbindet (oder zum ersten
+  Mal von http umsteigt), kann ein eigenes Zertifikat vorzeigen. Wer das ausschließen will, vergleicht den
+  Fingerabdruck mit dem im Protokoll des Servers („TLS-Fingerabdruck“).
+- **Unverschlüsseltes http** (`--tls off` mit `--allow-http`): Der Anmeldenachweis ist bei jeder Anmeldung derselbe,
+  und die Sitzungstokens gehen im Klartext. Wer sie mitschneidet, kann sich als eines deiner Geräte anmelden, die
+  Chiffrate abholen und offline Master-Passwörter raten, das Passwort beim Server ändern (deine Geräte sind dann
+  ausgesperrt) und das Konto auf dem Server löschen. Den Inhalt des Tresors kann er trotzdem nicht lesen.
+
 ### Ein gestohlenes oder verlorenes Gerät
 
 **Tresor gesperrt** (kein `tephra daemon` läuft): Der Dieb hat die Tresordatei und kann das Master-Passwort offline
@@ -173,8 +200,10 @@ Hosts gefunden hat.
   Ja – außer der Befehl passt auf ein Muster, das du vorab erlaubt hast. Die Rückfrage zeigt den Befehl und seine
   Eingabedaten, bei einer Datei Pfad, Größe, Prüfsumme und den Anfang des Inhalts. Steuerzeichen, unsichtbare Zeichen
   und solche, die die Leserichtung ändern, erscheinen als sichtbare Kürzel, damit die Anzeige nichts anderes zeigen
-  kann, als ausgeführt wird. Was getippt wurde, bevor die Frage zu sehen war, zählt nicht als Antwort; keine Antwort
-  binnen zwei Minuten gilt als Nein.
+  kann, als ausgeführt wird. Lange Läufe von Leerzeichen und Leerzeilen erscheinen als Vermerk („⟨2000 Leerzeichen⟩“),
+  mehrzeilige Befehle sind als solche gekennzeichnet, und in der App lässt sich erst erlauben, wenn der Text bis zum Ende
+  zu sehen war. Was länger als 20 000 Zeichen ist, wird gar nicht erst vorgelegt, sondern abgelehnt. Was getippt wurde,
+  bevor die Frage zu sehen war, zählt nicht als Antwort; keine Antwort binnen zwei Minuten gilt als Nein.
 - `auto`: Befehle laufen, sofern sie nicht auf der eingebauten Sperrliste stehen oder auf eines deiner eigenen Muster
   passen.
 - Lesen und Schreiben von Dateien sind getrennte Rechte.

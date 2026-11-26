@@ -100,6 +100,32 @@ The server limits failed logins per user name and sender; correct logins are nev
 cannot lock you out with wrong passwords. Behind a reverse proxy this needs `--behind-proxy`, otherwise all requests
 appear to come from the proxy.
 
+### Someone in the same network
+
+Someone can read and change the traffic between a device and the sync server – another device in the home network,
+a guest on the Wi-Fi, a compromised router.
+
+**In place:**
+
+- **TLS with a pinned certificate.** The server creates its certificate itself; a device remembers its SHA-256
+  fingerprint on first contact and afterwards only accepts exactly that certificate (the handshake signature is
+  checked as well). A different certificate stops syncing until the user accepts it explicitly. Devices still on
+  `http://` switch to HTTPS by themselves as soon as the server offers it.
+- The vault content stays protected in any case: records and header are encrypted and authenticated on the device.
+- **Signing out other devices needs the login proof**, not just a session token.
+- **Destroyed server copies are repaired.** If the server holds a version of a record that cannot be decrypted (for
+  example garbage uploaded with a stolen session token), a device that still has a valid version uploads it again.
+
+**Not protected:**
+
+- **The first contact.** Whoever sits in between exactly when a device first connects (or first switches from http)
+  can present a certificate of their own. To rule this out, compare the fingerprint with the one in the log of the
+  server ("TLS-Fingerabdruck").
+- **Plain http** (`--tls off` with `--allow-http`): the login proof is the same for every login and the session tokens
+  travel in clear. Whoever captures them can sign in as one of your devices, fetch the ciphertexts and guess master
+  passwords offline, change the password on the server (locking your devices out) and delete the account on the
+  server. The vault content still cannot be read.
+
 ### A stolen or lost device
 
 **Vault locked** (no `tephra daemon` running): the thief has the vault file and can guess the master password offline,
@@ -163,8 +189,11 @@ The model is treated as untrusted: it may be wrong, or it may follow instruction
   yes, unless the command matches a pattern you allowed in advance. The request shows the command and its input
   data; for a file its path, size, checksum and the beginning of the content. Control characters, invisible
   characters and characters that change the reading direction are shown as visible codes, so that the display cannot
-  be made to show something other than what will run. What was typed before the question appeared does not count as
-  an answer; no answer within two minutes counts as no.
+  be made to show something other than what will run. Long runs of spaces and blank lines appear as a note
+  ("⟨2000 Leerzeichen⟩"), commands spanning several lines are marked as such, and in the app allowing only becomes
+  possible once the text has been seen to its end. Anything longer than 20,000 characters is not put to the user at
+  all but refused. What was typed before the question appeared does not count as an answer; no answer within two
+  minutes counts as no.
 - `auto`: commands run unless they match the built-in deny list or one of your own patterns.
 - Reading and writing files are separate permissions.
 - Limits: calls per minute and client, parallel sessions, run time, output and file size.

@@ -6,12 +6,6 @@ import '../sync.dart';
 import '../text.dart';
 import 'common.dart';
 
-/// Was die App sagt, wenn eine unverschlüsselte Adresse eingegeben, aber nicht erlaubt wurde.
-String get plainHttpRefused => t(
-  'Die Adresse ist unverschlüsselt (http). Setze den Haken unter der Adresse, wenn der Server nur in deinem eigenen Netz erreichbar ist – oder verwende eine https-Adresse.',
-  'The address is unencrypted (http). Tick the box below the address if the server can only be reached in your own network – or use an https address.',
-);
-
 /// Haken, mit dem eine unverschlüsselte Serveradresse ausdrücklich erlaubt wird. Er erscheint nur, wenn die
 /// eingegebene Adresse eine ist.
 class PlainHttpConsent extends StatelessWidget {
@@ -46,8 +40,8 @@ class PlainHttpConsent extends StatelessWidget {
             title: Text(t('Unverschlüsselt verbinden', 'Connect without encryption')),
             subtitle: Text(
               t(
-                'Nur für einen Server im eigenen Netz. Wer in diesem Netz mitliest, kann sich am Server als dein Gerät anmelden. Der Inhalt des Tresors bleibt verschlüsselt.',
-                'Only for a server in your own network. Whoever listens in on that network can sign in to the server as your device. The content of the vault stays encrypted.',
+                'Nur nötig, wenn der Server kein HTTPS kann – sonst verbindet die App ohnehin verschlüsselt. Nur für einen Server im eigenen Netz. Wer in diesem Netz mitliest, kann sich am Server als dein Gerät anmelden. Der Inhalt des Tresors bleibt verschlüsselt.',
+                'Only needed if the server cannot do HTTPS – otherwise the app connects encrypted anyway. Only for a server in your own network. Whoever listens in on that network can sign in to the server as your device. The content of the vault stays encrypted.',
               ),
             ),
           ),
@@ -168,10 +162,8 @@ class _SyncDialogState extends State<SyncDialog> {
       );
       return;
     }
-    if (syncIsUnencrypted(server: _server.text) && !_allowHttp) {
-      setState(() => _error = plainHttpRefused);
-      return;
-    }
+    // Ob es ohne Verschlüsselung gehen muss, zeigt sich erst beim Verbinden: Kann der Server HTTPS, verbindet
+    // die App verschlüsselt, auch wenn die Adresse mit http beginnt. Sonst lehnt der Abgleich ohne Haken ab.
     SyncSummary? summary;
     final ok = await _run(() async {
       summary = await syncState.register(
@@ -219,6 +211,44 @@ class _SyncDialogState extends State<SyncDialog> {
     if (mounted) setState(() => _devices = null);
   }
 
+  /// Fragt nach dem Master-Passwort; der Server verlangt es, bevor ein anderes Gerät abgemeldet wird.
+  Future<String?> _askPassword() async {
+    final field = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(t('Master-Passwort', 'Master password')),
+          content: SizedBox(
+            width: 420,
+            child: SecretField(
+              key: const Key('sync-remove-password'),
+              controller: field,
+              label: t('Master-Passwort', 'Master password'),
+              helper: t(
+                'Ein anderes Gerät abzumelden verlangt dein Passwort – ein mitgeschnittenes Sitzungstoken soll dafür nicht reichen.',
+                'Signing out another device needs your password – a captured session token must not be enough.',
+              ),
+              autofocus: true,
+              onSubmitted: (value) => Navigator.pop(context, value),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(t('Abbrechen', 'Cancel'))),
+            FilledButton(
+              key: const Key('sync-remove-confirm'),
+              onPressed: () => Navigator.pop(context, field.text),
+              child: Text(t('Entfernen', 'Remove')),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      field.clear();
+      field.dispose();
+    }
+  }
+
   Future<void> _removeDevice(SyncDevice device) async {
     final ok = await confirm(
       context,
@@ -231,7 +261,9 @@ class _SyncDialogState extends State<SyncDialog> {
       destructive: true,
     );
     if (!ok || !mounted) return;
-    await _run(() => syncState.removeDevice(device.id));
+    final password = await _askPassword();
+    if (password == null || !mounted) return;
+    await _run(() => syncState.removeDevice(device.id, password));
     if (!mounted) return;
     setState(() {
       _devices = syncState.devices();
@@ -365,6 +397,41 @@ class _SyncDialogState extends State<SyncDialog> {
     ];
   }
 
+  /// Vergleicht den Fingerabdruck, mit dem sich der Server gerade ausweist, mit dem gespeicherten und übernimmt
+  /// einen neuen nur nach ausdrücklicher Bestätigung.
+  Future<void> _checkFingerprint(SyncConnection connection) async {
+    String? current;
+    final ok = await _run(() async => current = await syncServerFingerprint());
+    if (!ok || !mounted) return;
+    final now = current;
+    if (now == null) {
+      showMessage(
+        context,
+        t('Der Server ist nicht über HTTPS erreichbar.', 'The server cannot be reached over HTTPS.'),
+      );
+      return;
+    }
+    if (now == connection.fingerprint) {
+      showMessage(context, t('Der Fingerabdruck ist unverändert.', 'The fingerprint is unchanged.'));
+      return;
+    }
+    final accept = await confirm(
+      context,
+      title: t('Anderer Fingerabdruck', 'Different fingerprint'),
+      body: t(
+        'Bisher:\n${connection.fingerprint ?? '(keiner)'}\n\nJetzt:\n$now\n\nVergleiche ihn mit der Zeile „TLS-Fingerabdruck“ im Protokoll des Servers. Übernimm ihn nur, wenn der Server neu eingerichtet wurde – sonst könnte sich jemand dazwischengeschaltet haben.',
+        'Until now:\n${connection.fingerprint ?? '(none)'}\n\nNow:\n$now\n\nCompare it with the line "TLS-Fingerabdruck" in the log of the server. Accept it only if the server was set up anew – otherwise someone may have stepped in between.',
+      ),
+      action: t('Übernehmen', 'Accept'),
+      destructive: true,
+    );
+    if (!accept || !mounted) return;
+    if (attempt(context, () => syncTrustFingerprint(fingerprint: now))) {
+      syncState.syncNow();
+      setState(() {});
+    }
+  }
+
   List<Widget> _status(ThemeData theme, SyncConnection connection) {
     final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final lastSync = syncState.lastSync;
@@ -374,9 +441,30 @@ class _SyncDialogState extends State<SyncDialog> {
       Text(t('Angemeldet als ${connection.username}', 'Signed in as ${connection.username}'), style: muted),
       if (syncIsUnencrypted(server: connection.server))
         Text(
-          t('Unverschlüsselte Verbindung (http)', 'Unencrypted connection (http)'),
+          t(
+            'Unverschlüsselte Verbindung (http). Kann der Server HTTPS, steigt die App beim nächsten Abgleich um.',
+            'Unencrypted connection (http). If the server can do HTTPS, the app switches over with the next sync.',
+          ),
           key: const Key('sync-unencrypted'),
           style: muted,
+        )
+      else if (connection.fingerprint != null)
+        SelectableText(
+          t(
+            'Verschlüsselt · Fingerabdruck des Servers:\n${connection.fingerprint}',
+            'Encrypted · fingerprint of the server:\n${connection.fingerprint}',
+          ),
+          key: const Key('sync-fingerprint'),
+          style: muted?.copyWith(fontSize: 11),
+        ),
+      if (connection.encrypted && syncState.error != null)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('sync-check-fingerprint'),
+            onPressed: _busy ? null : () => _checkFingerprint(connection),
+            child: Text(t('Fingerabdruck des Servers prüfen', 'Check the fingerprint of the server')),
+          ),
         ),
       const SizedBox(height: 12),
       if (syncState.error != null)

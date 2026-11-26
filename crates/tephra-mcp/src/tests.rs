@@ -297,6 +297,27 @@ async fn bestaetigung_ablehnen_einmal_erlauben_fuer_die_sitzung_erlauben() {
 }
 
 #[tokio::test]
+async fn ueberlanges_wird_nicht_zur_bestaetigung_vorgelegt() {
+    let h = Harness::new(HostGrant::default(), ApprovalAnswer::Once).await;
+    let long = format!("echo {}", "x".repeat(crate::MAX_APPROVAL_CHARS));
+    let err = h.call("ssh_exec", json!({"host": "web1", "command": long})).await.expect_err("abgelehnt");
+    assert!(err.contains("cannot be shown"), "{err}");
+    let input = json!({"host": "web1", "command": "cat", "stdin": "y".repeat(crate::MAX_APPROVAL_CHARS + 1)});
+    assert!(h.call("ssh_exec", input).await.is_err());
+    assert!(h.asked().is_empty(), "gefragt wird gar nicht erst");
+    let entry = h.last_audit();
+    assert_eq!(entry.outcome, Outcome::Denied);
+    // Das Protokoll behält Anfang, Ende, Länge und Prüfsumme statt stillschweigend zu kürzen.
+    let long_entry = h.audits(2).remove(1);
+    assert!(long_entry.detail.contains("gekürzt") && long_entry.detail.contains("SHA-256"), "{}", long_entry.detail);
+    assert!(long_entry.detail.starts_with("echo x") && long_entry.detail.ends_with("xxx"));
+    // Knapp darunter wird gefragt.
+    let fits = format!("echo {}", "x".repeat(crate::MAX_APPROVAL_CHARS - 10));
+    h.call("ssh_exec", json!({"host": "web1", "command": fits})).await.expect("erlaubt");
+    assert_eq!(h.asked().len(), 1);
+}
+
+#[tokio::test]
 async fn not_aus_widerruf_und_gesperrter_tresor() {
     let h = Harness::new(auto(), ApprovalAnswer::Deny).await;
     let exec = json!({"host": "web1", "command": "echo x"});

@@ -49,8 +49,15 @@ pub struct AuditEntry {
 /// Schreibt einen Eintrag. Ein Fehler wird gemeldet, damit der Aufrufer eine
 /// Aktion, die sich nicht protokollieren lässt, gar nicht erst ausführt.
 pub fn append(core: &Core, mut entry: AuditEntry) -> Result<(), CoreError> {
-    if entry.detail.chars().count() > MAX_DETAIL {
-        entry.detail = entry.detail.chars().take(MAX_DETAIL).collect::<String>() + " …";
+    // Lange Befehle: Anfang, Ende, Länge und Prüfsumme, damit sich ein angehängter Teil nicht unbemerkt
+    // wegkürzen lässt.
+    let total = entry.detail.chars().count();
+    if total > MAX_DETAIL {
+        use sha2::{Digest, Sha256};
+        let hash: String = Sha256::digest(entry.detail.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect();
+        let head: String = entry.detail.chars().take(MAX_DETAIL - 1000).collect();
+        let tail: String = entry.detail.chars().skip(total - 800).collect();
+        entry.detail = format!("{head} … [gekürzt: {total} Zeichen, SHA-256 {hash}…] … {tail}");
     }
     let bytes = serde_json::to_vec(&entry).map_err(|e| CoreError::Config(e.to_string()))?;
     core.with_vault(|v| v.append_journal(&bytes).map(|_| ()))

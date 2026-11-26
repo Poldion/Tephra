@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1855719936;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1884557977;
 
 // Section: executor
 
@@ -1908,16 +1908,72 @@ fn wire__crate__api__sync__sync_remove_device_impl(
             };
             let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_device_id = <String>::sse_decode(&mut deserializer);
+            let api_password = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let output_ok = crate::api::sync::sync_remove_device(api_device_id).await?;
+                        let output_ok = crate::api::sync::sync_remove_device(api_device_id, api_password).await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__sync__sync_server_fingerprint_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "sync_server_fingerprint",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_)
+            };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::sync::sync_server_fingerprint().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__sync__sync_trust_fingerprint_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "sync_trust_fingerprint",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_)
+            };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_fingerprint = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>((move || {
+                let output_ok = crate::api::sync::sync_trust_fingerprint(api_fingerprint)?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -2674,6 +2730,9 @@ impl SseDecode for crate::api::mcp::McpRequest {
         let mut var_extra = <Option<String>>::sse_decode(deserializer);
         let mut var_bytes = <Option<u32>>::sse_decode(deserializer);
         let mut var_checksum = <Option<String>>::sse_decode(deserializer);
+        let mut var_subjectLines = <u32>::sse_decode(deserializer);
+        let mut var_subjectChars = <u32>::sse_decode(deserializer);
+        let mut var_extraLines = <u32>::sse_decode(deserializer);
         return crate::api::mcp::McpRequest {
             id: var_id,
             device: var_device,
@@ -2684,6 +2743,9 @@ impl SseDecode for crate::api::mcp::McpRequest {
             extra: var_extra,
             bytes: var_bytes,
             checksum: var_checksum,
+            subject_lines: var_subjectLines,
+            subject_chars: var_subjectChars,
+            extra_lines: var_extraLines,
         };
     }
 }
@@ -2852,10 +2914,14 @@ impl SseDecode for crate::api::sync::SyncConnection {
         let mut var_server = <String>::sse_decode(deserializer);
         let mut var_username = <String>::sse_decode(deserializer);
         let mut var_deviceId = <String>::sse_decode(deserializer);
+        let mut var_encrypted = <bool>::sse_decode(deserializer);
+        let mut var_fingerprint = <Option<String>>::sse_decode(deserializer);
         return crate::api::sync::SyncConnection {
             server: var_server,
             username: var_username,
             device_id: var_deviceId,
+            encrypted: var_encrypted,
+            fingerprint: var_fingerprint,
         };
     }
 }
@@ -3029,9 +3095,10 @@ fn pde_ffi_dispatcher_primary_impl(
         65 => wire__crate__api__sync__sync_reconnect_impl(port, ptr, rust_vec_len, data_len),
         66 => wire__crate__api__sync__sync_register_impl(port, ptr, rust_vec_len, data_len),
         67 => wire__crate__api__sync__sync_remove_device_impl(port, ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__sync__sync_watch_impl(port, ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__app__test_vpn_profile_impl(port, ptr, rust_vec_len, data_len),
-        72 => wire__crate__api__app__unlock_vault_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__sync__sync_server_fingerprint_impl(port, ptr, rust_vec_len, data_len),
+        72 => wire__crate__api__sync__sync_watch_impl(port, ptr, rust_vec_len, data_len),
+        73 => wire__crate__api__app__test_vpn_profile_impl(port, ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__app__unlock_vault_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3086,9 +3153,10 @@ fn pde_ffi_dispatcher_sync_impl(
         55 => wire__crate__api__app__save_identity_impl(ptr, rust_vec_len, data_len),
         60 => wire__crate__api__sync__sync_connection_impl(ptr, rust_vec_len, data_len),
         63 => wire__crate__api__sync__sync_is_unencrypted_impl(ptr, rust_vec_len, data_len),
-        68 => wire__crate__api__sync__sync_trust_roots_impl(ptr, rust_vec_len, data_len),
-        69 => wire__crate__api__sync__sync_unwatch_impl(ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__app__vault_exists_impl(ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__sync__sync_trust_fingerprint_impl(ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__sync__sync_trust_roots_impl(ptr, rust_vec_len, data_len),
+        71 => wire__crate__api__sync__sync_unwatch_impl(ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__app__vault_exists_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3423,6 +3491,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::mcp::McpRequest {
             self.extra.into_into_dart().into_dart(),
             self.bytes.into_into_dart().into_dart(),
             self.checksum.into_into_dart().into_dart(),
+            self.subject_lines.into_into_dart().into_dart(),
+            self.subject_chars.into_into_dart().into_dart(),
+            self.extra_lines.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3532,6 +3603,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::sync::SyncConnection {
             self.server.into_into_dart().into_dart(),
             self.username.into_into_dart().into_dart(),
             self.device_id.into_into_dart().into_dart(),
+            self.encrypted.into_into_dart().into_dart(),
+            self.fingerprint.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4105,6 +4178,9 @@ impl SseEncode for crate::api::mcp::McpRequest {
         <Option<String>>::sse_encode(self.extra, serializer);
         <Option<u32>>::sse_encode(self.bytes, serializer);
         <Option<String>>::sse_encode(self.checksum, serializer);
+        <u32>::sse_encode(self.subject_lines, serializer);
+        <u32>::sse_encode(self.subject_chars, serializer);
+        <u32>::sse_encode(self.extra_lines, serializer);
     }
 }
 
@@ -4263,6 +4339,8 @@ impl SseEncode for crate::api::sync::SyncConnection {
         <String>::sse_encode(self.server, serializer);
         <String>::sse_encode(self.username, serializer);
         <String>::sse_encode(self.device_id, serializer);
+        <bool>::sse_encode(self.encrypted, serializer);
+        <Option<String>>::sse_encode(self.fingerprint, serializer);
     }
 }
 

@@ -26,9 +26,11 @@ const REMOTE_SECRET: &str = "mcp/remote";
 pub const APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 /// So oft schaut das Gerät nach, ob eine Antwort eingetroffen ist (nur im eigenen Tresor; der Abgleich holt sie).
 const POLL: Duration = Duration::from_millis(500);
-/// Längste Texte einer Rückfrage; der Datensatz soll klein bleiben.
-const MAX_SUBJECT: usize = 8000;
-const MAX_EXTRA: usize = 4000;
+/// Längste Texte einer Rückfrage. Befehle und Eingabedaten darüber legt der Dienst gar nicht erst vor
+/// ([`crate::MAX_APPROVAL_CHARS`]); gekürzt wird hier also nichts, was bestätigt werden soll – nur die Vorschau
+/// einer Datei, die ohnehin nur ihren Anfang zeigt.
+const MAX_SUBJECT: usize = crate::MAX_APPROVAL_CHARS;
+const MAX_EXTRA: usize = crate::MAX_APPROVAL_CHARS;
 /// Rückfragen, deren Frist so lange vorbei ist, räumt jedes Gerät weg (etwa von einem Gerät, das abgestürzt ist).
 const STALE_MS: u64 = 24 * 60 * 60 * 1000;
 

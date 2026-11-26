@@ -22,7 +22,7 @@ const APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
 /// Eine Antwort, die vorher schon unterwegs war, galt nicht dieser Frage.
 const SETTLE: Duration = Duration::from_millis(500);
 /// Längste Anzeige von Befehlen, Eingabedaten und Dateiinhalten in der Rückfrage.
-const SHOWN_CHARS: usize = 2000;
+const SHOWN_CHARS: usize = tephra_mcp::MAX_APPROVAL_CHARS;
 
 // ------------------------------------------------------------------ Rückfragen
 
@@ -66,7 +66,12 @@ pub fn describe(request: &ApprovalRequest) -> Vec<String> {
     )];
     match &request.action {
         Action::Command { command, stdin } => {
-            lines.push("  Befehl ausführen:".into());
+            let count = tephra_mcp::line_count(command);
+            lines.push(if count > 1 {
+                format!("  Befehl ausführen ({count} Zeilen, alle werden ausgeführt):")
+            } else {
+                "  Befehl ausführen:".into()
+            });
             lines.extend(block(command));
             if let Some(stdin) = stdin {
                 lines.push(format!("  mit {} Byte Eingabedaten:", stdin.len()));
@@ -332,7 +337,7 @@ mod tests {
         assert!(shown.contains("nicht mehr einzeln gefragt"));
 
         // Überlänge wird nicht stillschweigend abgeschnitten.
-        let long = describe(&request(Action::Command { command: "x".repeat(5000), stdin: None })).join("\n");
+        let long = describe(&request(Action::Command { command: "x".repeat(25_000), stdin: None })).join("\n");
         assert!(long.contains("weitere Zeichen"));
     }
 }

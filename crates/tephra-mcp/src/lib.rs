@@ -20,7 +20,7 @@ pub mod service;
 mod util;
 
 pub use server::{Action, ApprovalAnswer, ApprovalRequest, Approver, DenyAll, McpServer};
-pub use util::{Redactor, printable, printable_lines, strip_ansi};
+pub use util::{MAX_APPROVAL_CHARS, Redactor, line_count, printable, printable_lines, strip_ansi};
 
 #[cfg(test)]
 mod tests;

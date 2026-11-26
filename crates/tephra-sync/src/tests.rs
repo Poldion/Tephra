@@ -277,7 +277,15 @@ async fn geraet_entfernen_und_abmelden() {
     assert_eq!(devices.iter().filter(|d| d.current).count(), 1);
     let phone = devices.iter().find(|d| d.name == "Handy").expect("handy");
 
-    a.remove_device(phone.id).await.expect("entfernen");
+    assert!(a.remove_device(phone.id, "falsch").await.is_err(), "nur mit dem Master-Passwort");
+    // Der Server selbst lehnt ohne Nachweis ab – wie bei jemandem, der nur ein Sitzungstoken mitgeschnitten hat.
+    let bare = a.authed::<Option<()>>(|http, url| http.delete(format!("{url}/v1/devices/{}", phone.id))).await;
+    assert_eq!(server_error(bare), codes::INVALID_REQUEST);
+    let wrong = RemoveDeviceRequest { auth_key: Bytes(vec![0; 32]) };
+    let forged =
+        a.authed::<Option<()>>(|http, url| http.delete(format!("{url}/v1/devices/{}", phone.id)).json(&wrong)).await;
+    assert_eq!(server_error(forged), codes::INVALID_CREDENTIALS);
+    a.remove_device(phone.id, PASSWORD).await.expect("entfernen");
     assert!(matches!(b.sync_once().await, Err(SyncError::SessionExpired)));
     assert_eq!(a.devices().await.expect("geräte").len(), 1);
     // Das entfernte Gerät kann sich mit dem Passwort wieder anmelden; sein Tresor bleibt.
@@ -586,7 +594,7 @@ async fn konten_sind_voneinander_getrennt() {
     assert!(labels(&bert).is_empty());
     // … kann ihr Gerät nicht entfernen …
     let annas_device = anna.devices().await.expect("geräte")[0].id;
-    assert_eq!(server_error(bert.remove_device(annas_device).await), codes::NOT_FOUND);
+    assert_eq!(server_error(bert.remove_device(annas_device, "anderes passwort").await), codes::NOT_FOUND);
     assert_eq!(anna.devices().await.expect("geräte").len(), 1);
     // … und ein Datensatz unter derselben Kennung landet nur in seinem eigenen Konto.
     let stored = bert.require().expect("sitzung");
@@ -652,4 +660,170 @@ async fn konto_loeschen_verlangt_das_passwort_und_entfernt_alles() {
     // Das andere Konto ist unberührt, der lokale Tresor ebenfalls.
     bert.sync_once().await.expect("bert gleicht weiter ab");
     assert_eq!(labels(&anna), vec!["web"]);
+}
+
+#[tokio::test]
+async fn zerstoerte_serverkopien_werden_wiederhergestellt() {
+    let server = server().await;
+    let a = first_device(&server).await;
+    let web = a.core.with_vault(|v| v.insert(&host("web"))).expect("insert");
+    a.sync_once().await.expect("abgleich");
+    let b = join(&server, "b.tephra", "Handy").await;
+
+    // Jemand mit einem gestohlenen Sitzungstoken überschreibt die Kopie beim Server mit Datenmüll.
+    let current: PullResponse = a
+        .authed(|http, url| http.get(format!("{url}/v1/sync")).query(&[("since", 0i64), ("limit", 200)]))
+        .await
+        .expect("holen");
+    let rev = current.items.iter().find(|item| item.id == web.0).expect("da").rev;
+    let garbage =
+        PushRequest { items: vec![PushItem { id: web.0, base_rev: rev, deleted: false, blob: Bytes(vec![7; 300]) }] };
+    let _: PushResponse =
+        a.authed(|http, url| http.post(format!("{url}/v1/sync/push")).json(&garbage)).await.expect("müll hochladen");
+
+    // Das nächste Gerät, das abgleicht, stellt seine heile Fassung wieder her.
+    let report = b.sync_once().await.expect("abgleich");
+    assert_eq!(report.reclaimed, 1, "{report:?}");
+    assert_eq!(labels(&b), vec!["web"]);
+    // Ein neues Gerät bekommt wieder einen lesbaren Datensatz.
+    let c = join(&server, "c.tephra", "Neu").await;
+    assert_eq!(labels(&c), vec!["web"]);
+    // Und auch ein Gerät, das lokal ändert, bleibt nicht hängen.
+    a.core.with_vault(|v| v.update(web, &host("web2")).map(|_| ())).expect("ändern");
+    let report = a.sync_once().await.expect("abgleich");
+    assert!(report.rejected.is_empty() && report.unreadable == 0, "{report:?}");
+    c.sync_once().await.expect("abgleich");
+    assert_eq!(labels(&c), vec!["web2"]);
+}
+
+#[tokio::test]
+async fn nach_einem_update_wird_alles_neu_abgeholt() {
+    let server = server().await;
+    let a = first_device(&server).await;
+    a.core.with_vault(|v| v.insert(&host("web"))).expect("insert");
+    a.sync_once().await.expect("abgleich");
+    let b = join(&server, "b.tephra", "Handy").await;
+    b.sync_once().await.expect("abgleich");
+    assert!(b.core.with_vault(|v| v.sync_cursor()).expect("stand") > 0);
+    // Eine ältere Version hinterließ einen anderen Vermerk: Der Stand beginnt wieder bei null und alles kommt neu.
+    b.core.with_vault(|v| v.put_secret(VERSION_SECRET, b"0.10.0")).expect("vermerk");
+    let report = b.sync_once().await.expect("abgleich");
+    assert_eq!(report.pulled + report.merged, 0, "nichts Neues, nur erneut gelesen: {report:?}");
+    assert_eq!(
+        b.core.with_vault(|v| v.get_secret(VERSION_SECRET)).expect("vermerk").as_deref(),
+        Some(env!("CARGO_PKG_VERSION").as_bytes())
+    );
+}
+
+// ------------------------------------------------------------------ TLS mit festem Fingerabdruck
+
+/// Server mit selbst erzeugtem Zertifikat auf 127.0.0.2 – das gilt nicht als der eigene Rechner, eine
+/// http-Adresse dorthin wäre also unverschlüsselt. `plain` lässt zusätzlich HTTP zu.
+async fn tls_server(plain: bool) -> (Server, String, String) {
+    let dir = tempfile::tempdir().expect("tmp");
+    let db_path = dir.path().join("server.sqlite");
+    let db = Db::open(&db_path).expect("db");
+    let identity = tephra_server::tls::identity(&dir.path().join("tls"), None).expect("zertifikat");
+    let listener = tokio::net::TcpListener::bind("127.0.0.2:0").await.expect("bind");
+    let address = listener.local_addr().expect("addr");
+    let config = Config { registration: Registration::Open, ..Config::default() };
+    tokio::spawn(tephra_server::serve_tls(
+        listener,
+        db,
+        config,
+        Some(identity.acceptor),
+        plain,
+        std::future::pending(),
+    ));
+    let http = format!("http://{address}");
+    let https = format!("https://{address}");
+    (Server { url: http, db_path, dir }, https, identity.fingerprint)
+}
+
+#[tokio::test]
+async fn http_adresse_wird_verschluesselt_mit_fingerabdruck() {
+    let (server, https, fingerprint) = tls_server(true).await;
+    let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    // Ohne „unverschlüsselt erlauben“: Der Server kann HTTPS, also geht es auch so.
+    a.register(&server.url, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren");
+    let connection = a.connection().expect("lesen").expect("verbunden");
+    assert_eq!(connection.server, https);
+    assert!(connection.encrypted);
+    assert_eq!(connection.fingerprint.as_deref(), Some(fingerprint.as_str()));
+    a.core.with_vault(|v| v.insert(&host("web"))).expect("insert");
+    a.sync_once().await.expect("abgleich");
+
+    // Ein zweites Gerät tritt mit der http-Adresse bei und landet ebenso verschlüsselt.
+    let b = Sync::new(
+        Sync::join(&server.dir.path().join("b.tephra"), &server.url, "anna", PASSWORD, "Handy", false)
+            .await
+            .expect("beitreten"),
+    );
+    assert_eq!(b.connection().expect("lesen").expect("da").server, https);
+    assert_eq!(labels(&b), vec!["web"]);
+}
+
+#[tokio::test]
+async fn altes_geraet_steigt_von_selbst_um() {
+    let (server, https, fingerprint) = tls_server(true).await;
+    let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    a.register(&server.url, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren");
+    // So sah die Verbindung eines Geräts vor Version 0.12 aus.
+    a.store(&Stored { server: server.url.clone(), pin: None, ..a.require().expect("da") }).expect("zurückdrehen");
+    assert!(!a.connection().expect("lesen").expect("da").encrypted);
+    a.sync_once().await.expect("abgleich");
+    let connection = a.connection().expect("lesen").expect("da");
+    assert_eq!(
+        (connection.server.as_str(), connection.fingerprint.as_deref()),
+        (https.as_str(), Some(fingerprint.as_str()))
+    );
+}
+
+#[tokio::test]
+async fn anderes_zertifikat_wird_erkannt_und_erst_nach_bestaetigung_angenommen() {
+    let (server, _, fingerprint) = tls_server(true).await;
+    let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    a.register(&server.url, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren");
+    // Jemand anderes antwortet – hier nachgestellt durch einen falschen gespeicherten Fingerabdruck.
+    let stored = a.require().expect("da");
+    a.store(&Stored { pin: Some("00".repeat(32)), ..stored }).expect("ändern");
+    assert!(matches!(a.sync_once().await, Err(SyncError::CertificateChanged)));
+    assert!(matches!(a.devices().await, Err(SyncError::CertificateChanged)));
+    // Der Nutzer vergleicht und bestätigt.
+    let shown = a.server_fingerprint().await.expect("probe").expect("https");
+    assert_eq!(shown, fingerprint);
+    a.trust_fingerprint(&shown).expect("übernehmen");
+    a.sync_once().await.expect("abgleich");
+    assert!(a.trust_fingerprint("kein fingerabdruck").is_err());
+}
+
+#[tokio::test]
+async fn nur_https_weist_http_ab() {
+    let (server, https, _) = tls_server(false).await;
+    let plain = http_client().get(format!("{}/healthz", server.url)).send().await;
+    assert!(plain.is_err(), "HTTP wird nicht beantwortet");
+    let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    a.register(&server.url, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren über https");
+    assert_eq!(a.connection().expect("lesen").expect("da").server, https);
+}
+
+#[tokio::test]
+async fn ohne_https_beim_server_bleibt_http_eine_ausdrueckliche_wahl() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let db = Db::open(&dir.path().join("server.sqlite")).expect("db");
+    let listener = tokio::net::TcpListener::bind("127.0.0.2:0").await.expect("bind");
+    let url = format!("http://{}", listener.local_addr().expect("addr"));
+    let config = Config { registration: Registration::Open, ..Config::default() };
+    tokio::spawn(tephra_server::serve(listener, db, config, std::future::pending()));
+    let (core, _) = Core::create(&dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    let refused = a.register(&url, "anna", PASSWORD, "Laptop", None, false).await;
+    assert!(matches!(refused, Err(SyncError::InsecureUrl)), "{refused:?}");
+    a.register(&url, "anna", PASSWORD, "Laptop", None, true).await.expect("mit ausdrücklicher Erlaubnis");
+    let connection = a.connection().expect("lesen").expect("da");
+    assert!(!connection.encrypted && connection.fingerprint.is_none());
 }

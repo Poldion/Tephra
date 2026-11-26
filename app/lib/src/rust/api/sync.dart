@@ -20,6 +20,14 @@ int syncTrustRoots({required List<Uint8List> certificates}) =>
 SyncConnection? syncConnection() =>
     RustLib.instance.api.crateApiSyncSyncConnection();
 
+/// Fingerabdruck, mit dem sich der Server gerade ausweist; `None` ohne https.
+Future<String?> syncServerFingerprint() =>
+    RustLib.instance.api.crateApiSyncSyncServerFingerprint();
+
+/// Übernimmt einen neuen Fingerabdruck des Servers, nachdem der Nutzer ihn verglichen hat.
+void syncTrustFingerprint({required String fingerprint}) => RustLib.instance.api
+    .crateApiSyncSyncTrustFingerprint(fingerprint: fingerprint);
+
 /// Ob die Adresse eine unverschlüsselte Verbindung zu einem anderen Rechner
 /// bedeutet; die muss der Nutzer ausdrücklich erlauben.
 bool syncIsUnencrypted({required String server}) =>
@@ -76,8 +84,14 @@ Future<List<SyncDevice>> syncDevices() =>
     RustLib.instance.api.crateApiSyncSyncDevices();
 
 /// Entfernt ein Gerät vom Konto. Was es schon abgeholt hat, bleibt dort lesbar.
-Future<void> syncRemoveDevice({required String deviceId}) =>
-    RustLib.instance.api.crateApiSyncSyncRemoveDevice(deviceId: deviceId);
+/// Meldet ein anderes Gerät ab; dafür verlangt der Server das Master-Passwort.
+Future<void> syncRemoveDevice({
+  required String deviceId,
+  required String password,
+}) => RustLib.instance.api.crateApiSyncSyncRemoveDevice(
+  deviceId: deviceId,
+  password: password,
+);
 
 /// Trennt dieses Gerät vom Server. Der Tresor bleibt, wie er ist.
 Future<void> syncDisconnect() =>
@@ -97,14 +111,27 @@ class SyncConnection {
   final String username;
   final String deviceId;
 
+  /// Ob die Verbindung verschlüsselt ist (https).
+  final bool encrypted;
+
+  /// Fingerabdruck des Server-Zertifikats, dem dieses Gerät vertraut (`AB:CD:…`).
+  final String? fingerprint;
+
   const SyncConnection({
     required this.server,
     required this.username,
     required this.deviceId,
+    required this.encrypted,
+    this.fingerprint,
   });
 
   @override
-  int get hashCode => server.hashCode ^ username.hashCode ^ deviceId.hashCode;
+  int get hashCode =>
+      server.hashCode ^
+      username.hashCode ^
+      deviceId.hashCode ^
+      encrypted.hashCode ^
+      fingerprint.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -113,7 +140,9 @@ class SyncConnection {
           runtimeType == other.runtimeType &&
           server == other.server &&
           username == other.username &&
-          deviceId == other.deviceId;
+          deviceId == other.deviceId &&
+          encrypted == other.encrypted &&
+          fingerprint == other.fingerprint;
 }
 
 /// Ein Gerät des Kontos.

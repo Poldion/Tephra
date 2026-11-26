@@ -51,13 +51,12 @@ import 'package:tephra/src/paths.dart';
 import 'package:tephra/src/rust/api/app.dart';
 import 'package:tephra/src/rust/api/files.dart';
 import 'package:tephra/src/rust/api/mcp.dart';
-import 'package:tephra/src/rust/api/sync.dart' show syncIsUnencrypted;
+import 'package:tephra/src/rust/api/sync.dart' show syncConnection, syncIsUnencrypted;
 import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
 import 'package:tephra/src/settings.dart';
 import 'package:tephra/src/text.dart';
 import 'package:tephra/src/ui/device_unlock_ui.dart';
-import 'package:tephra/src/ui/sync_ui.dart' show plainHttpRefused;
 import 'package:tephra/src/ui/terminal_page.dart';
 import 'package:tephra/src/update.dart';
 import 'package:xterm/xterm.dart' show TerminalView;
@@ -244,11 +243,16 @@ Future<void> _syncDone(WidgetTester tester, String server) async {
   await _appears(tester, find.byKey(const Key('sync-done')));
   await _appears(tester, find.text(t('Dieses Gerät', 'This device')));
   expect(find.byKey(const Key('sync-error')), findsNothing);
-  expect(find.byKey(const Key('sync-unencrypted')), syncIsUnencrypted(server: server) ? findsOneWidget : findsNothing);
+  // Auch bei einer http-Adresse: Der Server kann HTTPS, die App hat umgestellt.
+  expect(find.byKey(const Key('sync-unencrypted')), findsNothing);
+  if (syncIsUnencrypted(server: server)) {
+    _expectEncrypted();
+    expect(find.byKey(const Key('sync-fingerprint')), findsOneWidget);
+  }
 }
 
-/// Eine unverschlüsselte Adresse nimmt die App erst an, wenn der Haken dafür gesetzt ist; für eine
-/// verschlüsselte oder den eigenen Rechner erscheint er gar nicht.
+/// Bei einer http-Adresse zu einem anderen Rechner erscheint der Haken „Unverschlüsselt verbinden“. Er bleibt aus:
+/// Der Sync-Server des Tests kann HTTPS, also verbindet die App trotzdem verschlüsselt (siehe [_expectEncrypted]).
 Future<void> _allowPlainHttp(WidgetTester tester, String server, Key submit) async {
   final consent = find.byKey(const Key('sync-allow-http'));
   if (!syncIsUnencrypted(server: server)) {
@@ -256,9 +260,14 @@ Future<void> _allowPlainHttp(WidgetTester tester, String server, Key submit) asy
     return;
   }
   await _appears(tester, consent);
-  await _tap(tester, find.byKey(submit));
-  await _appears(tester, find.text(plainHttpRefused));
-  await _tap(tester, consent);
+}
+
+/// Die Verbindung zum Sync-Server ist verschlüsselt und an den Fingerabdruck des Servers gebunden.
+void _expectEncrypted() {
+  final connection = syncConnection()!;
+  expect(connection.encrypted, isTrue, reason: connection.server);
+  expect(connection.server, startsWith('https://'));
+  expect(connection.fingerprint, matches(RegExp(r'^([0-9A-F]{2}:){31}[0-9A-F]{2}$')));
 }
 
 /// Das zweite Gerät: holt den Tresor eines bestehenden Kontos ab.
@@ -470,6 +479,29 @@ Future<void> _mcp(WidgetTester tester) async {
   final (refusal, denied) = await refused;
   expect(denied, isTrue, reason: refusal);
   expect(refusal, isNot(contains('nicht erlaubt\n')));
+
+  // Mehrzeilig und länger als der Kasten: Hinweis auf die Zeilen, und erlauben geht erst nach dem Scrollen.
+  final lines = [for (var i = 1; i <= 40; i++) 'echo zeile $i'].join('\n');
+  final hidden = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': lines});
+  await _appears(tester, find.byKey(const Key('mcp-approval')));
+  expect(find.byKey(const Key('mcp-approval-lines')), findsOneWidget);
+  await tester.pump(const Duration(seconds: 1));
+  expect(tester.widget<ButtonStyleButton>(find.byKey(const Key('mcp-approval-once'))).onPressed, isNull);
+  expect(find.byKey(const Key('mcp-approval-scroll')), findsOneWidget);
+  await _shot(tester, '16-mcp-mehrzeilig');
+  // Den Kasten bis zum Ende scrollen (wie mit Mausrad oder Finger).
+  final box = find.ancestor(of: find.byKey(const Key('mcp-approval-subject')), matching: find.byType(Scrollable)).first;
+  final position = tester.state<ScrollableState>(box).position;
+  position.jumpTo(position.maxScrollExtent);
+  await tester.pump(const Duration(milliseconds: 300));
+  await _until(
+    tester,
+    () => tester.widget<ButtonStyleButton>(find.byKey(const Key('mcp-approval-once'))).onPressed != null,
+    'erlauben nach dem Scrollen',
+  );
+  await _tap(tester, find.byKey(const Key('mcp-approval-deny')));
+  final (_, hiddenDenied) = await hidden;
+  expect(hiddenDenied, isTrue);
 
   expect(await bridge.close(), 0);
   await _until(tester, () => mcpState.clients.isEmpty, 'Client getrennt');

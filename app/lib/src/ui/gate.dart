@@ -4,7 +4,6 @@ import 'package:material_ui/material_ui.dart';
 import '../device_unlock.dart';
 import '../paths.dart';
 import '../rust/api/app.dart';
-import '../rust/api/sync.dart' show syncIsUnencrypted;
 import '../sync.dart';
 import '../text.dart';
 import 'common.dart';
@@ -118,10 +117,8 @@ class _GateScreenState extends State<GateScreen> {
       );
       return;
     }
-    if (syncIsUnencrypted(server: _server.text) && !_allowHttp) {
-      setState(() => _error = plainHttpRefused);
-      return;
-    }
+    // Kann der Server HTTPS, verbindet die App verschlüsselt, auch bei einer http-Adresse; sonst lehnt der Abgleich
+    // ohne Haken ab.
     setState(() {
       _busy = true;
       _error = null;
