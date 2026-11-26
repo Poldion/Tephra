@@ -4,20 +4,26 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.provider.OpenableColumns
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.view.View
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.security.KeyStore
+import javax.crypto.Cipher
 import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
@@ -118,12 +124,12 @@ class MainActivity : FlutterActivity() {
                 }
                 // Entsperren ohne Master-Passwort, siehe DeviceUnlock. Der Keystore kann dauern, deshalb
                 // nicht im Hauptthread.
-                "deviceUnlockStored", "deviceUnlockSave", "deviceUnlockLoad", "deviceUnlockForget" -> thread {
+                "deviceUnlockStored", "deviceUnlockKind", "deviceUnlockFingerprint", "deviceUnlockForget" -> thread {
                     try {
                         val answer: Any? = when (call.method) {
                             "deviceUnlockStored" -> DeviceUnlock.stored(this)
-                            "deviceUnlockSave" -> DeviceUnlock.save(this, call.argument<ByteArray>("key")!!)
-                            "deviceUnlockLoad" -> DeviceUnlock.load(this)
+                            "deviceUnlockKind" -> DeviceUnlock.kind(this)
+                            "deviceUnlockFingerprint" -> DeviceUnlock.fingerprintProblem(this)
                             else -> DeviceUnlock.forget(this)
                         }
                         runOnUiThread { result.success(if (answer is Unit) null else answer) }
@@ -131,6 +137,8 @@ class MainActivity : FlutterActivity() {
                         runOnUiThread { result.error("deviceUnlock", error.message ?: error.javaClass.simpleName, null) }
                     }
                 }
+                "deviceUnlockSave" -> saveDeviceUnlock(call.argument<ByteArray>("key")!!, Prompt(call), result)
+                "deviceUnlockLoad" -> loadDeviceUnlock(Prompt(call), result)
                 // Solange Sitzungen offen sind, läuft ein Dienst mit Benachrichtigung; ohne ihn schließt
                 // Android die Verbindungen, sobald die App ein paar Sekunden im Hintergrund ist.
                 "keepSessions" -> {
@@ -179,6 +187,136 @@ class MainActivity : FlutterActivity() {
             getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
         } catch (error: Exception) {
         }
+    }
+
+    /// Texte des Fingerabdruck-Dialogs; sie kommen übersetzt von der Oberfläche.
+    private class Prompt(call: MethodCall) {
+        val title: String = call.argument<String>("title") ?: "Tephra"
+        val subtitle: String = call.argument<String>("subtitle") ?: ""
+        val cancel: String = call.argument<String>("cancel") ?: "Abbrechen"
+    }
+
+    /// Legt den Schlüssel des Tresors ab: ab Android 9 an den Fingerabdruck gebunden, darunter wie bisher.
+    private fun saveDeviceUnlock(secret: ByteArray, prompt: Prompt, result: MethodChannel.Result) {
+        if (!DeviceUnlock.fingerprintSupported) {
+            background(result) { DeviceUnlock.saveLegacy(this, secret) }
+            return
+        }
+        DeviceUnlock.fingerprintProblem(this)?.let {
+            secret.fill(0)
+            result.error(it, it, null)
+            return
+        }
+        val cipher = try {
+            DeviceUnlock.fingerEncryptCipher()
+        } catch (error: Exception) {
+            secret.fill(0)
+            // Android 9 meldet einen fehlenden Fingerabdruck erst beim Anlegen des Schlüssels.
+            result.error("noneenrolled", error.message ?: error.javaClass.simpleName, null)
+            return
+        }
+        authenticate(cipher, prompt, result, onEnd = { secret.fill(0) }) { unlocked ->
+            DeviceUnlock.saveFinger(this, unlocked, secret)
+            null
+        }
+    }
+
+    /// Gibt den abgelegten Schlüssel heraus, bei einer Ablage mit Fingerabdruck erst nach dem Dialog.
+    private fun loadDeviceUnlock(prompt: Prompt, result: MethodChannel.Result) {
+        when (DeviceUnlock.kind(this)) {
+            "legacy" -> background(result) { DeviceUnlock.loadLegacy(this) }
+            "fingerprint" -> {
+                val cipher = try {
+                    DeviceUnlock.fingerDecryptCipher(this)
+                } catch (error: KeyPermanentlyInvalidatedException) {
+                    result.error("invalidated", error.message ?: "invalidated", null)
+                    return
+                } catch (error: Exception) {
+                    result.error("deviceUnlock", error.message ?: error.javaClass.simpleName, null)
+                    return
+                }
+                authenticate(cipher, prompt, result) { unlocked -> DeviceUnlock.openFinger(this, unlocked) }
+            }
+            else -> result.success(null)
+        }
+    }
+
+    private fun background(result: MethodChannel.Result, work: () -> Any?) = thread {
+        try {
+            val answer = work()
+            runOnUiThread { result.success(if (answer is Unit) null else answer) }
+        } catch (error: Exception) {
+            runOnUiThread { result.error("deviceUnlock", error.message ?: error.javaClass.simpleName, null) }
+        }
+    }
+
+    /// Zeigt den Fingerabdruck-Dialog des Systems. Erst danach gibt der Keystore `cipher` frei; mit dem
+    /// freigegebenen Exemplar läuft `work` abseits der Oberfläche. Ein falscher Finger lässt den Dialog offen.
+    private fun authenticate(
+        cipher: Cipher,
+        prompt: Prompt,
+        result: MethodChannel.Result,
+        onEnd: () -> Unit = {},
+        work: (Cipher) -> Any?,
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            onEnd()
+            result.error("unsupported", "unsupported", null)
+            return
+        }
+        var answered = false
+        fun answer(reply: () -> Unit) {
+            if (answered) return
+            answered = true
+            onEnd()
+            reply()
+        }
+        val builder = BiometricPrompt.Builder(this)
+            .setTitle(prompt.title)
+            .setNegativeButton(prompt.cancel, mainExecutor) { _, _ ->
+                answer { result.error("cancelled", "cancelled", null) }
+            }
+        if (prompt.subtitle.isNotEmpty()) builder.setSubtitle(prompt.subtitle)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setConfirmationRequired(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            builder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        }
+        builder.build().authenticate(
+            BiometricPrompt.CryptoObject(cipher),
+            CancellationSignal(),
+            mainExecutor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+                    val unlocked = authResult.cryptoObject?.cipher ?: cipher
+                    thread {
+                        val outcome = runCatching { work(unlocked) }
+                        runOnUiThread {
+                            answer {
+                                outcome.fold(
+                                    { result.success(if (it is Unit) null else it) },
+                                    { result.error("deviceUnlock", it.message ?: it.javaClass.simpleName, null) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                override fun onAuthenticationError(code: Int, message: CharSequence?) {
+                    val kind = when (code) {
+                        BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED,
+                        BiometricPrompt.BIOMETRIC_ERROR_CANCELED,
+                        BiometricPrompt.BIOMETRIC_ERROR_TIMEOUT -> "cancelled"
+                        BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
+                        BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT -> "lockout"
+                        BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS -> "noneenrolled"
+                        BiometricPrompt.BIOMETRIC_ERROR_HW_NOT_PRESENT,
+                        BiometricPrompt.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "nohardware"
+                        else -> "deviceUnlock"
+                    }
+                    answer { result.error(kind, message?.toString() ?: kind, null) }
+                }
+            },
+        )
     }
 
     private fun keepSessions(count: Int, title: String, text: String, channel: String) {

@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] – 2026-11-26
+
+### Added
+
+- **Unlocking with your fingerprint (app on Android 9 and newer):** "Unlock with fingerprint" in the dialog "About
+  Tephra". The key of the vault in the phone's key store is then bound to your fingerprint; Android releases it only
+  after its fingerprint dialog, every time. At start the app asks for the finger by itself, after locking the button
+  "Unlock with fingerprint" does. There is no fallback to the PIN of the phone: if the finger does not work, enter the
+  master password; cancelling or too many attempts change nothing. If a fingerprint is added to or removed from the
+  phone, the app asks for the master password once and switches the setting off.
+
+### Changed
+
+- A setting "Unlock without the master password" from 0.8.0 on Android is converted to the fingerprint after the next
+  unlock; if you cancel the fingerprint dialog, it is switched off. Below Android 9 it works as before.
+
 ## [0.9.0] – 2026-11-25
 
 ### Added

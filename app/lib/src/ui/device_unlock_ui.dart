@@ -23,12 +23,29 @@ class _DeviceUnlockSectionState extends State<DeviceUnlockSection> {
     deviceUnlock.refresh();
   }
 
+  bool get _finger => Platform.isAndroid && deviceUnlock.fingerprintSupported;
+
   Future<void> _set(bool on) async {
+    if (on && _finger) {
+      final problem = await deviceUnlock.fingerprintProblem();
+      if (!mounted) return;
+      if (problem != null) {
+        showMessage(context, problem.toString(), error: true);
+        return;
+      }
+    }
     if (on) {
       final ok = await confirm(
         context,
-        title: t('Ohne Passwort entsperren?', 'Unlock without the password?'),
-        body: Platform.isAndroid
+        title: _finger
+            ? t('Mit Fingerabdruck entsperren?', 'Unlock with your fingerprint?')
+            : t('Ohne Passwort entsperren?', 'Unlock without the password?'),
+        body: _finger
+            ? t(
+                'Tephra geht auf diesem Telefon dann mit deinem Fingerabdruck auf statt mit dem Master-Passwort. Den Schlüssel dafür gibt Android nur nach einem Fingerabdruck heraus; wer das Telefon nur entsperrt in der Hand hat, kommt nicht hinein. Fügst du am Telefon einen Fingerabdruck hinzu oder entfernst einen, fragt Tephra einmal nach dem Master-Passwort. Auf anderen Geräten ändert sich nichts, und das Master-Passwort bleibt gültig.',
+                'Tephra then opens on this phone with your fingerprint instead of the master password. Android releases the key for this only after a fingerprint; holding the phone unlocked is not enough. If you add or remove a fingerprint on the phone, Tephra asks for the master password once. Nothing changes on other devices, and the master password stays valid.',
+              )
+            : Platform.isAndroid
             ? t(
                 'Tephra geht auf diesem Telefon dann ohne Master-Passwort auf. Geschützt ist der Tresor hier nur noch durch die Sperre des Telefons: Wer es entsperrt in der Hand hat, kommt an alle Zugänge. Auf anderen Geräten ändert sich nichts, und das Master-Passwort bleibt gültig.',
                 'Tephra then opens on this phone without the master password. Here the vault is protected only by the lock of the phone: whoever holds it unlocked gets to all credentials. Nothing changes on other devices, and the master password stays valid.',
@@ -49,7 +66,9 @@ class _DeviceUnlockSectionState extends State<DeviceUnlockSection> {
         await deviceUnlock.disable();
       }
     } catch (error) {
-      if (mounted) showMessage(context, errorText(error), error: true);
+      // Im Fingerabdruck-Dialog abgebrochen: bleibt aus, ohne Meldung.
+      final cancelled = error is DeviceUnlockException && error.code == 'cancelled';
+      if (mounted && !cancelled) showMessage(context, errorText(error), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -64,9 +83,18 @@ class _DeviceUnlockSectionState extends State<DeviceUnlockSection> {
         value: deviceUnlock.enabled,
         onChanged: _busy ? null : _set,
         contentPadding: EdgeInsets.zero,
-        title: Text(t('Ohne Master-Passwort entsperren', 'Unlock without the master password')),
+        title: Text(
+          _finger
+              ? t('Mit Fingerabdruck entsperren', 'Unlock with fingerprint')
+              : t('Ohne Master-Passwort entsperren', 'Unlock without the master password'),
+        ),
         subtitle: Text(
-          Platform.isAndroid
+          _finger
+              ? t(
+                  'Nur auf diesem Telefon, statt des Master-Passworts.',
+                  'Only on this phone, instead of the master password.',
+                )
+              : Platform.isAndroid
               ? t('Nur auf diesem Telefon, solange es entsperrt ist.', 'Only on this phone, while it is unlocked.')
               : t(
                   'Nur auf diesem Rechner, geschützt durch dein Windows-Konto.',

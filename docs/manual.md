@@ -88,6 +88,14 @@ or on the lock of the phone: whoever gets past that gets to all credentials. If 
 because the vault was replaced or the lock of the phone was removed – the app switches it off on this device and asks
 for the password again. Not available on Linux yet.
 
+**With fingerprint (Android 9 and newer).** On these phones the switch is called "Unlock with fingerprint". The key in
+the phone's key store is then bound to your fingerprint: Android releases it only after the system's fingerprint
+dialog, every time, and holding the phone unlocked is not enough. There is deliberately no fallback to the PIN of the
+phone; if the finger does not work, enter the master password. Cancelling or too many attempts change nothing. If a
+fingerprint is added to or removed from the phone, Android makes the key unusable; the app then asks for the master
+password once and switches the setting off. A setting from version 0.8.0 (without fingerprint) is converted after the
+next unlock: the app asks for the fingerprint once; if you cancel, the setting is switched off.
+
 **Backup.** `tephra export backup.tephra` writes a copy that is still encrypted with the same master password and
 recovery key. It contains your hosts, identities, keys, VPN profiles, snippets and known host keys, but nothing that
 belongs to one device: no keys marked `--local-only`, no sync session, no MCP clients or grants, no audit log. To

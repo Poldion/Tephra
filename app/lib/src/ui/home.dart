@@ -10,6 +10,7 @@ import '../text.dart';
 import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
+import 'common.dart';
 import 'device_unlock_ui.dart';
 import 'logo.dart';
 import 'mcp_ui.dart';
@@ -55,6 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     availableUpdate.addListener(_announceUpdate);
     checkForUpdateQuietly();
+    if (deviceUnlock.upgradePending) WidgetsBinding.instance.addPostFrameCallback((_) => _upgradeDeviceUnlock());
+  }
+
+  /// Eine Ablage aus Version 0.8.0 ohne Fingerabdruck wird nach dem Entsperren auf den Fingerabdruck umgestellt.
+  Future<void> _upgradeDeviceUnlock() async {
+    final message = await deviceUnlock.upgrade();
+    if (message != null && mounted) showMessage(context, message.text, error: message.error);
   }
 
   @override

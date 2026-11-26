@@ -755,7 +755,8 @@ void main() {
     if (_sshd.isNotEmpty) await _keepSession(tester);
 
     // ---- Entsperren ohne Master-Passwort (Windows und Android)
-    if (deviceUnlock.supported) await _deviceUnlock(tester);
+    // Unter Android verlangt das einen echten Fingerabdruck; dort wird es am Gerät von Hand geprüft.
+    if (deviceUnlock.supported && !Platform.isAndroid) await _deviceUnlock(tester);
 
     // ---- MCP: Dienst der App, Client, Freigabe, Rückfragen über die echte Brücke
     if (_cli.isNotEmpty) await _mcp(tester);

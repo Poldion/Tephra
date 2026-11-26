@@ -119,8 +119,12 @@ Windows account, lies next to the vault. Whoever removes the disk additionally n
 whoever sits at the signed-in account or runs programs in it gets to the vault key. On Android it lies encrypted in the
 app's private folder; the key for that sits in the phone's key store, never leaves it and only works while the phone
 is unlocked. On these devices the sign-in to the device then protects the vault, no longer the master password.
+From Android 9 that key is additionally bound to a strong biometric (fingerprint) for every use and invalidated when
+the enrolled fingerprints change; there is no fallback to the PIN of the phone. Then the vault is protected by the
+fingerprint and the phone's key store; someone who knows the PIN of the phone and holds it unlocked does not get in.
+Anyone whose fingerprint is enrolled on the phone does.
 
-Not there yet: biometrics or Windows Hello when unlocking, and automatic locking after a period of inactivity.
+Not there yet: Windows Hello when unlocking, and automatic locking after a period of inactivity.
 
 ### A malicious or compromised SSH host
 

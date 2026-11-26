@@ -68,6 +68,11 @@ class _GateScreenState extends State<GateScreen> {
       await deviceUnlock.unlock();
       widget.onUnlocked();
     } catch (error) {
+      // Abgebrochen oder zu viele Versuche: Der Schlüssel bleibt, das Master-Passwort geht ohnehin.
+      if (error is DeviceUnlockException && error.temporary) {
+        if (mounted && error.code != 'cancelled') setState(() => _error = error.toString());
+        return;
+      }
       // Ein Schlüssel, der nicht mehr passt oder sich nicht mehr öffnen lässt, wird nicht wieder versucht.
       await deviceUnlock.disable();
       if (mounted) {
@@ -241,10 +246,14 @@ class _GateScreenState extends State<GateScreen> {
       if (_exists && _onDevice) ...[
         FilledButton.tonalIcon(
           key: const Key('gate-device-unlock'),
-          icon: const Icon(Icons.lock_open_rounded),
+          icon: Icon(deviceUnlock.fingerprint ? Icons.fingerprint_rounded : Icons.lock_open_rounded),
           label: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(t('Ohne Passwort entsperren', 'Unlock without the password')),
+            child: Text(
+              deviceUnlock.fingerprint
+                  ? t('Mit Fingerabdruck entsperren', 'Unlock with fingerprint')
+                  : t('Ohne Passwort entsperren', 'Unlock without the password'),
+            ),
           ),
           onPressed: _busy ? null : _unlockOnDevice,
         ),

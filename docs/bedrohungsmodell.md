@@ -126,10 +126,12 @@ dem Windows-Konto, neben dem Tresor. Wer die Platte ausbaut, braucht zusätzlich
 angemeldeten Konto sitzt oder darin Programme ausführt, kommt an den Vault Key. Unter Android liegt er verschlüsselt
 im privaten Ordner der App; der Schlüssel dazu steckt im Keystore des Telefons, verlässt ihn nicht und arbeitet nur,
 solange das Telefon entsperrt ist. Auf diesen Geräten schützt dann die Anmeldung am Gerät den Tresor, nicht mehr das
-Master-Passwort.
+Master-Passwort. Ab Android 9 ist dieser Schlüssel zusätzlich bei jeder Benutzung an starke Biometrie (Fingerabdruck)
+gebunden und wird ungültig, sobald sich die eingerichteten Fingerabdrücke ändern; ein Ausweichen auf die PIN des
+Telefons gibt es nicht. Dann schützen Fingerabdruck und Keystore den Tresor; wer die PIN kennt und das Telefon
+entsperrt in der Hand hat, kommt nicht hinein. Wer mit seinem Finger am Telefon eingerichtet ist, schon.
 
-Noch nicht vorhanden: Biometrie oder Windows Hello beim Entsperren und automatisches Sperren nach einer Zeit ohne
-Nutzung.
+Noch nicht vorhanden: Windows Hello beim Entsperren und automatisches Sperren nach einer Zeit ohne Nutzung.
 
 ### Ein bösartiger oder übernommener SSH-Host
 

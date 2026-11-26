@@ -90,6 +90,15 @@ Telefons: Wer daran kommt, kommt an alle Zugänge. Geht das Entsperren einmal ni
 wurde oder die Sperre des Telefons entfernt wurde –, schaltet die App es auf diesem Gerät ab und fragt wieder nach dem
 Passwort. Unter Linux gibt es das noch nicht.
 
+**Mit Fingerabdruck (Android 9 und neuer).** Auf diesen Telefonen heißt der Schalter „Mit Fingerabdruck entsperren“.
+Der Schlüssel im Keystore ist dann an deinen Fingerabdruck gebunden: Android gibt ihn nur nach dem
+Fingerabdruck-Dialog des Systems heraus, jedes Mal, und das entsperrte Telefon allein genügt nicht. Ein Ausweichen auf
+die PIN des Telefons gibt es bewusst nicht; klappt der Finger nicht, gib das Master-Passwort ein. Abbrechen oder zu
+viele Versuche ändern nichts. Kommt am Telefon ein Fingerabdruck dazu oder wird einer entfernt, macht Android den
+Schlüssel unbrauchbar; die App fragt dann einmal nach dem Master-Passwort und schaltet die Einstellung ab. Eine
+Einstellung aus Version 0.8.0 (ohne Fingerabdruck) wird nach dem nächsten Entsperren umgestellt: Die App fragt einmal
+nach dem Fingerabdruck; brichst du ab, wird die Einstellung abgeschaltet.
+
 **Sicherung.** `tephra export sicherung.tephra` schreibt eine Kopie, die weiterhin mit demselben Master-Passwort und
 Wiederherstellungsschlüssel verschlüsselt ist. Sie enthält Hosts, Identitäten, Schlüssel, VPN-Profile, Snippets und
 bekannte Hostschlüssel, aber nichts, das zu einem einzelnen Gerät gehört: keine Schlüssel mit `--local-only`, keine

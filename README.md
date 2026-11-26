@@ -35,7 +35,7 @@ The project is under active development. **What exists today:**
   manage hosts, identities, keys and WireGuard profiles, terminal sessions in tabs – direct, through jump hosts or
   through the tunnel – and a file browser over SFTP in every session. On Android with a bar of PC keys (Esc, Tab,
   Ctrl, Alt, arrows, function keys, paste) above the keyboard; touching and holding in the terminal selects text and
-  copies it; open sessions stay connected while the app is in the background. If a connection drops (dead spot, switch
+  copies it; the vault opens with your fingerprint; open sessions stay connected while the app is in the background. If a connection drops (dead spot, switch
   between Wi-Fi and mobile data), the app reconnects by itself; with "Keep the session on the host" the session runs
   in tmux on the host and the app reattaches to it, so programs like Claude Code keep running. The app syncs with your sync server while the vault is open, so the phone and the desktop share one
   vault, and it can update itself from the releases on GitHub.
