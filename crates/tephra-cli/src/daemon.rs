@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tephra_core::Core;
+use tephra_mcp::remote::{self, FirstAnswer, RemoteApprover};
 use tephra_mcp::service::{self, Listener, ServiceEvent};
 use tephra_mcp::{Action, ApprovalAnswer, ApprovalRequest, Approver};
 use tephra_sync::Sync;
@@ -135,18 +136,65 @@ impl Approver for TerminalApprover {
     }
 }
 
+/// Wählt bei jeder Rückfrage, wer gefragt wird: Ist dieses Gerät fernverwaltet und gleicht es ab, gehen
+/// Rückfragen an die anderen Geräte – mit Terminal zusätzlich dorthin, und die erste Antwort gilt. Sonst fragt
+/// nur das Terminal (oder niemand). Entschieden wird jedes Mal neu, damit `tephra mcp remote on|off` ohne Neustart
+/// des Dienstes wirkt.
+struct Choose {
+    core: Core,
+    local: Arc<dyn Approver>,
+    remote: Arc<dyn Approver>,
+    both: Arc<dyn Approver>,
+    attended: bool,
+    syncing: bool,
+}
+
+#[async_trait]
+impl Approver for Choose {
+    async fn approve(&self, request: &ApprovalRequest) -> ApprovalAnswer {
+        let managed = self.syncing && remote::managing_device(&self.core).ok().flatten().is_some();
+        match (managed, self.attended) {
+            (true, true) => self.both.approve(request).await,
+            (true, false) => {
+                eprintln!("Rückfrage an die anderen Geräte:");
+                for line in describe(request) {
+                    eprintln!("{line}");
+                }
+                let answer = self.remote.approve(request).await;
+                eprintln!("  {}", if answer == ApprovalAnswer::Deny { "abgelehnt" } else { "erlaubt" });
+                answer
+            }
+            (false, _) => self.local.approve(request).await,
+        }
+    }
+}
+
 // ------------------------------------------------------------------ Dienst
 
 /// Startet den Dienst und läuft, bis er mit Strg+C beendet wird.
 pub async fn run(core: Core, vault: &Path) -> Result<(), String> {
     let listener = Listener::bind(vault).await?;
     let attended = std::io::stdin().is_terminal();
-    let approver: Arc<dyn Approver> = if attended { Arc::new(TerminalApprover::start()) } else { Arc::new(Unattended) };
 
     // Abgleich im Hintergrund, sofern dieses Gerät mit einem Server verbunden ist.
     let (stop, stopped) = tokio::sync::watch::channel(false);
     let sync = Sync::new(core.clone());
     let syncing = sync.connection().ok().flatten().is_some();
+
+    let local: Arc<dyn Approver> = if attended { Arc::new(TerminalApprover::start()) } else { Arc::new(Unattended) };
+    let remote: Arc<dyn Approver> = Arc::new(RemoteApprover::new(core.clone()));
+    let approver: Arc<dyn Approver> = Arc::new(Choose {
+        core: core.clone(),
+        both: Arc::new(FirstAnswer(local.clone(), remote.clone())),
+        local,
+        remote,
+        attended,
+        syncing,
+    });
+    // Rückfragen eines früheren Laufs wartet niemand mehr ab.
+    let _ = remote::cleanup(&core);
+    let _ = remote::heartbeat(&core, env!("CARGO_PKG_VERSION"));
+    let managed = remote::managing_device(&core).ok().flatten().is_some();
     let sync_task = tokio::spawn(async move {
         if syncing {
             sync.run(stopped, |result| match result {
@@ -164,19 +212,32 @@ pub async fn run(core: Core, vault: &Path) -> Result<(), String> {
     });
 
     // Unbenutzte Verbindungen und Tunnel nach einigen Minuten abbauen.
+    // Dazu alle fünf Minuten ein Lebenszeichen für die Fernverwaltung und das Aufräumen alter Rückfragen.
     let reaper_core = core.clone();
     let reaper = tokio::spawn(async move {
+        let mut round = 0u64;
         loop {
+            round = round.wrapping_add(1);
             tokio::time::sleep(Duration::from_secs(60)).await;
             reaper_core.disconnect_idle(Duration::from_secs(600)).await;
             reaper_core.close_idle_tunnels(Duration::from_secs(300)).await;
+            if round.is_multiple_of(5) {
+                let _ = remote::heartbeat(&reaper_core, env!("CARGO_PKG_VERSION"));
+                let _ = remote::cleanup_stale(&reaper_core);
+            }
         }
     });
 
     eprintln!("Dienst läuft. MCP-Clients verbinden sich mit „tephra mcp serve“.");
     eprintln!("Abgleich: {}. Beenden mit Strg+C.", if syncing { "aktiv" } else { "nicht eingerichtet" });
-    if !attended {
-        eprintln!("Kein Terminal: Rückfragen werden abgelehnt; nutzbar sind Hosts mit „read-only“ und „auto“.");
+    match (managed, syncing, attended) {
+        (true, true, true) => eprintln!("Fernverwaltet: Rückfragen erscheinen hier und auf den anderen Geräten."),
+        (true, true, false) => eprintln!("Fernverwaltet: Rückfragen gehen an die anderen Geräte (etwa das Telefon)."),
+        (true, false, _) => eprintln!("Fernverwaltet, aber ohne Abgleich: Änderungen und Antworten kommen nicht an."),
+        (false, _, false) => {
+            eprintln!("Kein Terminal: Rückfragen werden abgelehnt; nutzbar sind Hosts mit „read-only“ und „auto“.")
+        }
+        (false, _, true) => {}
     }
     let observer: service::Observer = Arc::new(|event| match event {
         ServiceEvent::Connected { client } => eprintln!("MCP-Client „{}“ verbunden.", printable(&client, 60)),

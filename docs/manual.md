@@ -444,6 +444,34 @@ the vault, so both must use the same one.
 **5. Check.** The model should now see the tool `list_hosts` and the hosts you shared. `tephra mcp audit` shows what it
 did.
 
+### Remote management (for example a container without a screen)
+
+If `tephra daemon` runs on a device without a screen – a server or a Docker container –, nobody is there to answer
+questions. With remote management you set the access of that device on another one, for example on your phone, and
+answer its questions ("Confirm each") there.
+
+```bash
+tephra mcp remote on --name "Container"     # once, on the device itself
+tephra mcp remote status                     # lists all remotely managed devices of the vault
+tephra mcp remote off                        # withdraw the consent
+```
+
+- **Only with the consent of the device.** Without `remote on` on the device itself everything stays as above: access
+  rules apply only there and are never synced. No other device can switch remote management on.
+- With consent, the access rules of the device (kill switch, clients, hosts with level and file rights, limits) live in
+  a synced entry of the vault. In the app the device appears under **MCP → Other devices** – on the phone, too – and
+  can be edited there just like your own rules. New clients are added there; the token is shown once and belongs in
+  the MCP client on the device.
+- Changes apply on the device as soon as it has synced, with `tephra daemon` within a few seconds. Running sessions of
+  a client whose access you withdraw end there.
+- **Questions** of the device appear in the app as the same dialog as those of its own service, with the name of the
+  device. The first answer counts; without an answer within two minutes the request is refused. If the device has a
+  terminal, it asks there as well. On the phone a question only arrives while the app is open or open sessions keep it
+  awake in the background.
+- **Remove** (in the app) takes the device out of management; nothing is allowed there afterwards until it agrees
+  again. `remote off` on the device brings its rules back to it.
+- Requirement: the device syncs with your sync server (`tephra sync join`) and `tephra daemon` is running.
+
 ### Access levels
 
 | Level | Commands | Interactive sessions | Files |

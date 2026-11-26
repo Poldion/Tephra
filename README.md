@@ -66,7 +66,7 @@ The project is under active development. **What exists today:**
 | **Host keys** | Trust on first use, a hard stop when a known key changes, known keys are synced between your devices |
 | **VPN** | In-process tunnel using the WireGuard protocol, per host; import and export in `wg-quick` format, key generation, handshake test, names resolved through the tunnel |
 | **Snippets** | Stored commands with `{{placeholders}}`, available to language models through MCP |
-| **MCP** | Commands, interactive sessions and file access for language models; per client and per host; three access levels, confirmation in the terminal that shows exactly what will run, audit log written before anything runs, kill switch that also ends running sessions |
+| **MCP** | Commands, interactive sessions and file access for language models; per client and per host; three access levels, confirmation in the terminal or the app that shows exactly what will run, audit log written before anything runs, kill switch that also ends running sessions; devices without a screen can be managed and confirmed from your phone (`tephra mcp remote on`) |
 | **Sync** | End-to-end encrypted, works offline and catches up later, merges concurrent changes field by field, device list with removal |
 | **Sync server** | One binary with an SQLite file; registration open, by invite code or closed; quota per account; failed logins limited per user name and sender |
 

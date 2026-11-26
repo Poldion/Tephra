@@ -119,9 +119,12 @@ class _SecretFieldState extends State<SecretField> {
 
 /// Rahmen eines Verwaltungsbildschirms: Überschrift, Aktionen, Inhalt.
 class SectionPage extends StatelessWidget {
-  const SectionPage({super.key, required this.title, this.actions = const [], required this.child});
+  const SectionPage({super.key, required this.title, this.actions = const [], required this.child, this.back = false});
 
   final String title;
+
+  /// Mit einem Knopf „Zurück“ vor dem Titel, für Seiten, die über einer anderen liegen.
+  final bool back;
   final List<Widget> actions;
   final Widget child;
 
@@ -138,7 +141,13 @@ class SectionPage extends StatelessWidget {
             spacing: 12,
             runSpacing: 8,
             children: [
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (back) ...[const BackButton(), const SizedBox(width: 4)],
+                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                ],
+              ),
               Wrap(spacing: 8, runSpacing: 8, children: actions),
             ],
           ),

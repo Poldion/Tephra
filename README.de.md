@@ -73,7 +73,7 @@ Das Projekt wird aktiv entwickelt. **Was es heute gibt:**
 | **Hostschlüssel** | Vertrauen beim ersten Verbinden, harter Stopp, wenn sich ein bekannter Schlüssel ändert, bekannte Schlüssel werden zwischen deinen Geräten abgeglichen |
 | **VPN** | Tunnel über das WireGuard-Protokoll im Programm, pro Host; Import und Export im `wg-quick`-Format, Schlüsselerzeugung, Handshake-Test, Namensauflösung durch den Tunnel |
 | **Snippets** | Gespeicherte Befehle mit `{{Platzhaltern}}`, für Sprachmodelle über MCP nutzbar |
-| **MCP** | Befehle, interaktive Sitzungen und Dateizugriff für Sprachmodelle; je Client und je Host; drei Zugriffsstufen, Bestätigung im Terminal, die genau zeigt, was laufen wird, Protokoll, das vor jeder Ausführung geschrieben wird, Not-Aus, der auch laufende Sitzungen beendet |
+| **MCP** | Befehle, interaktive Sitzungen und Dateizugriff für Sprachmodelle; je Client und je Host; drei Zugriffsstufen, Bestätigung im Terminal oder in der App, die genau zeigt, was laufen wird, Protokoll, das vor jeder Ausführung geschrieben wird, Not-Aus, der auch laufende Sitzungen beendet; Geräte ohne Bildschirm lassen sich vom Telefon aus verwalten und bestätigen (`tephra mcp remote on`) |
 | **Abgleich** | Ende-zu-Ende-verschlüsselt, funktioniert offline und holt später nach, führt gleichzeitige Änderungen feldweise zusammen, Geräteliste mit Entfernen |
 | **Sync-Server** | Ein Programm mit einer SQLite-Datei; Registrierung offen, mit Einladungscode oder geschlossen; Obergrenzen je Konto; Fehlversuche bei der Anmeldung je Benutzername und Absender begrenzt |
 

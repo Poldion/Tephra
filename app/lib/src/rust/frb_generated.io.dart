@@ -123,7 +123,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<McpClient> dco_decode_list_mcp_client(dynamic raw);
 
   @protected
+  List<McpDeviceView> dco_decode_list_mcp_device_view(dynamic raw);
+
+  @protected
   List<McpGrant> dco_decode_list_mcp_grant(dynamic raw);
+
+  @protected
+  List<McpRequest> dco_decode_list_mcp_request(dynamic raw);
 
   @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
@@ -148,6 +154,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   McpClient dco_decode_mcp_client(dynamic raw);
+
+  @protected
+  McpDeviceView dco_decode_mcp_device_view(dynamic raw);
 
   @protected
   McpEvent dco_decode_mcp_event(dynamic raw);
@@ -339,7 +348,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<McpClient> sse_decode_list_mcp_client(SseDeserializer deserializer);
 
   @protected
+  List<McpDeviceView> sse_decode_list_mcp_device_view(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<McpGrant> sse_decode_list_mcp_grant(SseDeserializer deserializer);
+
+  @protected
+  List<McpRequest> sse_decode_list_mcp_request(SseDeserializer deserializer);
 
   @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
@@ -364,6 +381,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   McpClient sse_decode_mcp_client(SseDeserializer deserializer);
+
+  @protected
+  McpDeviceView sse_decode_mcp_device_view(SseDeserializer deserializer);
 
   @protected
   McpEvent sse_decode_mcp_event(SseDeserializer deserializer);
@@ -587,7 +607,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_mcp_device_view(
+    List<McpDeviceView> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_mcp_grant(List<McpGrant> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_mcp_request(
+    List<McpRequest> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
@@ -621,6 +653,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_mcp_client(McpClient self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_mcp_device_view(McpDeviceView self, SseSerializer serializer);
 
   @protected
   void sse_encode_mcp_event(McpEvent self, SseSerializer serializer);

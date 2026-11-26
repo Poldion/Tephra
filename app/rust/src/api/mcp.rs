@@ -14,9 +14,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-use tephra_core::model::Host;
+use tephra_core::model::{Host, ItemId};
 use tephra_mcp::audit::{self, Outcome};
 use tephra_mcp::policy::{AccessLevel, HostGrant, McpPolicy};
+use tephra_mcp::remote;
 use tephra_mcp::service::{Listener, Observer, ServiceEvent};
 use tephra_mcp::{printable, printable_lines, Action, ApprovalAnswer, ApprovalRequest, Approver};
 use tokio::sync::oneshot;
@@ -47,6 +48,8 @@ pub enum McpRequestKind {
 /// schon so umgeschrieben, dass sie die Anzeige nicht verändern können.
 pub struct McpRequest {
     pub id: u32,
+    /// Name des Geräts, das fragt; leer für den Dienst dieser App.
+    pub device: String,
     pub client: String,
     pub host: String,
     pub kind: McpRequestKind,
@@ -130,6 +133,7 @@ fn view(id: u32, request: &ApprovalRequest) -> McpRequest {
     };
     McpRequest {
         id,
+        device: String::new(),
         client: printable(&request.client_name, 60),
         host: printable(&request.host_label, 60),
         kind,
@@ -306,16 +310,34 @@ pub struct McpOverview {
     pub max_timeout_secs: u32,
 }
 
-fn policy() -> Result<McpPolicy> {
-    Ok(McpPolicy::load(&core()?)?)
+/// `device` ist die Kennung eines fernverwalteten Geräts (siehe [`mcp_devices`]); `None` meint dieses Gerät.
+fn device_id(device: &Option<String>) -> Result<Option<ItemId>> {
+    device.as_deref().filter(|d| !d.is_empty()).map(parse_id).transpose()
 }
 
-/// Lädt die Freigaben, ändert sie und speichert sie wieder.
-fn change(edit: impl FnOnce(&mut McpPolicy) -> Result<()>) -> Result<()> {
+fn load(core: &tephra_core::Core, device: Option<ItemId>) -> Result<McpPolicy> {
+    match device {
+        Some(id) => remote::load_device(core, id)?
+            .ok_or_else(|| anyhow!("Dieses Gerät wird nicht mehr aus der Ferne verwaltet")),
+        None => Ok(McpPolicy::load(core)?),
+    }
+}
+
+fn policy(device: &Option<String>) -> Result<McpPolicy> {
+    load(&core()?, device_id(device)?)
+}
+
+/// Lädt die Freigaben (dieses oder eines fernverwalteten Geräts), ändert sie und speichert sie wieder.
+fn change(device: &Option<String>, edit: impl FnOnce(&mut McpPolicy) -> Result<()>) -> Result<()> {
     let core = core()?;
-    let mut policy = McpPolicy::load(&core)?;
+    let id = device_id(device)?;
+    let mut policy = load(&core, id)?;
     edit(&mut policy)?;
-    Ok(policy.save(&core)?)
+    match id {
+        Some(id) => remote::save_device(&core, id, &policy)?,
+        None => policy.save(&core)?,
+    }
+    Ok(())
 }
 
 fn unknown_client() -> anyhow::Error {
@@ -324,9 +346,9 @@ fn unknown_client() -> anyhow::Error {
 
 /// Clients mit ihren Freigaben und der Stand des Not-Aus.
 #[frb(sync)]
-pub fn mcp_overview() -> Result<McpOverview> {
+pub fn mcp_overview(device: Option<String>) -> Result<McpOverview> {
     let core = core()?;
-    let policy = McpPolicy::load(&core)?;
+    let policy = load(&core, device_id(&device)?)?;
     let clients = policy
         .clients
         .iter()
@@ -365,8 +387,8 @@ pub fn mcp_overview() -> Result<McpOverview> {
 
 /// Setzt die längste Laufzeit, die ein Modell für einen Befehl wählen darf (eine Minute bis ein Tag).
 #[frb(sync)]
-pub fn mcp_set_max_timeout(secs: u32) -> Result<()> {
-    change(|policy| {
+pub fn mcp_set_max_timeout(device: Option<String>, secs: u32) -> Result<()> {
+    change(&device, |policy| {
         if !policy.limits.set_max_timeout_secs(u64::from(secs)) {
             bail!("Die Grenze muss zwischen einer Minute und einem Tag liegen");
         }
@@ -377,13 +399,13 @@ pub fn mcp_set_max_timeout(secs: u32) -> Result<()> {
 /// Legt einen Client an. Zurück kommt sein Token – nur dieses eine Mal; der
 /// Tresor behält davon bloß einen Hash.
 #[frb(sync)]
-pub fn mcp_add_client(name: String) -> Result<String> {
+pub fn mcp_add_client(device: Option<String>, name: String) -> Result<String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         bail!("Der Client braucht einen Namen");
     }
     let mut token = String::new();
-    change(|policy| {
+    change(&device, |policy| {
         if policy.clients.iter().any(|client| client.name.eq_ignore_ascii_case(&name)) {
             bail!("Einen MCP-Client „{name}“ gibt es bereits");
         }
@@ -395,22 +417,25 @@ pub fn mcp_add_client(name: String) -> Result<String> {
 
 /// Entfernt einen Client; sein Token wird damit ungültig.
 #[frb(sync)]
-pub fn mcp_remove_client(client_id: String) -> Result<()> {
-    change(|policy| policy.remove_client(&client_id).then_some(()).ok_or_else(unknown_client))
+pub fn mcp_remove_client(device: Option<String>, client_id: String) -> Result<()> {
+    change(&device, |policy| policy.remove_client(&client_id).then_some(()).ok_or_else(unknown_client))
 }
 
 /// Sperrt einen Client oder gibt ihn wieder frei, ohne seine Freigaben zu verlieren.
 #[frb(sync)]
-pub fn mcp_set_client_disabled(client_id: String, disabled: bool) -> Result<()> {
-    change(|policy| {
+pub fn mcp_set_client_disabled(device: Option<String>, client_id: String, disabled: bool) -> Result<()> {
+    change(&device, |policy| {
         policy.client_mut(&client_id).ok_or_else(unknown_client)?.disabled = disabled;
         Ok(())
     })
 }
 
 /// Gibt einem Client einen Host frei. Eine bestehende Freigabe desselben Hosts wird ersetzt.
+// Die Brücke zur Oberfläche reicht die Felder einzeln durch.
+#[allow(clippy::too_many_arguments)]
 #[frb(sync)]
 pub fn mcp_grant(
+    device: Option<String>,
     client_id: String,
     host_id: String,
     level: McpLevel,
@@ -437,7 +462,7 @@ pub fn mcp_grant(
         files_read,
         files_write,
     };
-    change(|policy| {
+    change(&device, |policy| {
         policy.client_mut(&client_id).ok_or_else(unknown_client)?.hosts.insert(host, grant);
         Ok(())
     })
@@ -445,9 +470,9 @@ pub fn mcp_grant(
 
 /// Entzieht einem Client einen Host.
 #[frb(sync)]
-pub fn mcp_revoke(client_id: String, host_id: String) -> Result<()> {
+pub fn mcp_revoke(device: Option<String>, client_id: String, host_id: String) -> Result<()> {
     let host = parse_id(&host_id)?;
-    change(|policy| {
+    change(&device, |policy| {
         policy.client_mut(&client_id).ok_or_else(unknown_client)?.hosts.remove(&host);
         Ok(())
     })
@@ -456,8 +481,8 @@ pub fn mcp_revoke(client_id: String, host_id: String) -> Result<()> {
 /// Not-Aus: Mit `false` wird jeder weitere Zugriff abgelehnt, und laufende
 /// Sitzungen und Verbindungen des Dienstes enden binnen Sekunden.
 #[frb(sync)]
-pub fn mcp_set_enabled(enabled: bool) -> Result<()> {
-    change(|policy| {
+pub fn mcp_set_enabled(device: Option<String>, enabled: bool) -> Result<()> {
+    change(&device, |policy| {
         policy.enabled = enabled;
         Ok(())
     })
@@ -465,7 +490,106 @@ pub fn mcp_set_enabled(enabled: bool) -> Result<()> {
 
 #[frb(sync)]
 pub fn mcp_enabled() -> Result<bool> {
-    Ok(policy()?.enabled)
+    Ok(policy(&None)?.enabled)
+}
+
+// ------------------------------------------------------------------ Fernverwaltung
+
+/// Ein Gerät, das der Fernverwaltung zugestimmt hat (`tephra mcp remote on`).
+pub struct McpDeviceView {
+    pub id: String,
+    pub name: String,
+    /// `false` ist der Not-Aus.
+    pub enabled: bool,
+    pub clients: u32,
+    /// Letztes Lebenszeichen (Unix-Zeit in ms); 0, wenn keins.
+    pub seen_ms: i64,
+    pub version: String,
+    /// Ob es dieses Gerät selbst ist.
+    pub this_device: bool,
+}
+
+/// Alle fernverwalteten Geräte dieses Tresors.
+#[frb(sync)]
+pub fn mcp_devices() -> Result<Vec<McpDeviceView>> {
+    Ok(remote::devices(&core()?)?
+        .into_iter()
+        .map(|d| McpDeviceView {
+            id: d.id.to_string(),
+            name: printable(&d.name, 60),
+            enabled: d.enabled,
+            clients: u32::try_from(d.clients).unwrap_or(u32::MAX),
+            seen_ms: i64::try_from(d.seen_ms).unwrap_or(i64::MAX),
+            version: printable(&d.version, 20),
+            this_device: d.this_device,
+        })
+        .collect())
+}
+
+/// Nimmt ein Gerät aus der Verwaltung. Dort ist danach nichts mehr erlaubt, bis es selbst wieder zustimmt.
+#[frb(sync)]
+pub fn mcp_remove_device(device: String) -> Result<()> {
+    Ok(remote::remove_device(&core()?, parse_id(&device)?)?)
+}
+
+/// Rückfragen anderer Geräte, jeweils unter einer festen Nummer für die Oberfläche, und wann sie zuerst
+/// angezeigt wurden.
+static REMOTE: Mutex<Vec<(u32, ItemId, Instant)>> = Mutex::new(Vec::new());
+
+/// Rückfragen anderer Geräte, auf die noch niemand geantwortet hat, älteste zuerst. Die Texte sind entschärft.
+#[frb(sync)]
+pub fn mcp_remote_requests() -> Result<Vec<McpRequest>> {
+    let pending = remote::pending_approvals(&core()?)?;
+    let mut known = lock(&REMOTE);
+    known.retain(|(_, id, _)| pending.iter().any(|(p, _)| p == id));
+    let shown = |text: &str| printable_lines(text, SHOWN_CHARS);
+    Ok(pending
+        .into_iter()
+        .map(|(item, approval)| {
+            let number = match known.iter().find(|(_, id, _)| *id == item) {
+                Some((number, _, _)) => *number,
+                None => {
+                    let number = next_id();
+                    known.push((number, item, Instant::now()));
+                    number
+                }
+            };
+            McpRequest {
+                id: number,
+                device: printable(&approval.device_name, 60),
+                client: printable(&approval.client, 60),
+                host: printable(&approval.host, 60),
+                kind: match approval.kind.as_str() {
+                    "session" => McpRequestKind::Session,
+                    "file_read" => McpRequestKind::FileRead,
+                    "file_write" => McpRequestKind::FileWrite,
+                    "host_key" => McpRequestKind::HostKey,
+                    _ => McpRequestKind::Command,
+                },
+                subject: shown(&approval.subject),
+                extra: approval.extra.as_deref().map(shown),
+                bytes: approval.bytes.map(|b| u32::try_from(b).unwrap_or(u32::MAX)),
+                checksum: approval.checksum.as_deref().map(|c| printable(c, 16)),
+            }
+        })
+        .collect())
+}
+
+/// Beantwortet die Rückfrage eines anderen Geräts. `by` ist der Name dieses Geräts. `false`, wenn sie sich
+/// inzwischen erledigt hat oder die Zustimmung zu früh kam, um ihr gegolten zu haben.
+#[frb(sync)]
+pub fn mcp_remote_answer(id: u32, answer: McpAnswer, by: String) -> Result<bool> {
+    let deny = matches!(answer, McpAnswer::Deny);
+    let item = match lock(&REMOTE).iter().find(|(number, _, _)| *number == id) {
+        Some((_, item, shown)) if deny || shown.elapsed() >= SETTLE => *item,
+        _ => return Ok(false),
+    };
+    let reply = match answer {
+        McpAnswer::Deny => ApprovalAnswer::Deny,
+        McpAnswer::Once => ApprovalAnswer::Once,
+        McpAnswer::Session => ApprovalAnswer::Session,
+    };
+    Ok(remote::answer(&core()?, item, reply, &by)?)
 }
 
 // ------------------------------------------------------------------ Protokoll

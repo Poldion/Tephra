@@ -4,6 +4,8 @@
 //! gelten pro MCP-Client (Token) und pro Host. Sie werden nur auf diesem
 //! Gerät gespeichert und nie abgeglichen – ein Gerät, auf dem LLM-Zugriff
 //! eingerichtet wurde, schaltet ihn nicht stillschweigend auf anderen frei.
+//! Ausnahme: Hat dieses Gerät selbst der Fernverwaltung zugestimmt, liegen
+//! seine Freigaben in einem abgeglichenen Datensatz (siehe [`crate::remote`]).
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -168,8 +170,26 @@ pub fn token_hash(token: &str) -> String {
 }
 
 impl McpPolicy {
-    /// Lädt die Konfiguration aus dem (entsperrten) Tresor.
+    /// Lädt die Konfiguration dieses Geräts aus dem (entsperrten) Tresor: aus dem abgeglichenen Datensatz, wenn
+    /// das Gerät fernverwaltet ist, sonst aus dem lokalen Geheimnis. Ist der Datensatz eines fernverwalteten Geräts
+    /// verschwunden, ist nichts erlaubt.
     pub fn load(core: &Core) -> Result<Self, CoreError> {
+        match crate::remote::managing_device(core)? {
+            Some(device) => Ok(crate::remote::load_device(core, device)?.unwrap_or_else(Self::locked)),
+            None => Self::load_local(core),
+        }
+    }
+
+    /// Speichert die Konfiguration dieses Geräts dort, wo [`McpPolicy::load`] sie liest.
+    pub fn save(&self, core: &Core) -> Result<(), CoreError> {
+        match crate::remote::managing_device(core)? {
+            Some(device) => crate::remote::save_device(core, device, self),
+            None => self.save_local(core),
+        }
+    }
+
+    /// Die Konfiguration im lokalen Geheimnis, unabhängig von der Fernverwaltung.
+    pub fn load_local(core: &Core) -> Result<Self, CoreError> {
         match core.with_vault(|v| v.get_secret(SECRET_NAME))? {
             Some(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|e| CoreError::Config(format!("MCP-Freigaben sind beschädigt: {e}"))),
@@ -177,9 +197,14 @@ impl McpPolicy {
         }
     }
 
-    pub fn save(&self, core: &Core) -> Result<(), CoreError> {
+    pub fn save_local(&self, core: &Core) -> Result<(), CoreError> {
         let bytes = serde_json::to_vec(self).map_err(|e| CoreError::Config(e.to_string()))?;
         core.with_vault(|v| v.put_secret(SECRET_NAME, &bytes))
+    }
+
+    /// Nichts erlaubt: Not-Aus, keine Clients.
+    pub fn locked() -> Self {
+        Self { enabled: false, ..Self::default() }
     }
 
     /// Legt einen neuen Client an und gibt sein Token zurück. Das Token wird
@@ -220,7 +245,7 @@ impl McpPolicy {
     }
 }
 
-pub(crate) fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 

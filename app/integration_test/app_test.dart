@@ -355,8 +355,12 @@ class _Bridge {
     _process.stderr.transform(utf8.decoder).listen((text) => debugPrint('Brücke: ${text.trim()}'));
   }
 
-  static Future<_Bridge> start(String token) async => _Bridge._(
-    await Process.start(_cli, ['mcp', 'serve'], environment: {'TEPHRA_MCP_TOKEN': token, 'TEPHRA_VAULT': vaultPath}),
+  static Future<_Bridge> start(String token, {String? vault}) async => _Bridge._(
+    await Process.start(
+      _cli,
+      ['mcp', 'serve'],
+      environment: {'TEPHRA_MCP_TOKEN': token, 'TEPHRA_VAULT': vault ?? vaultPath},
+    ),
   );
 
   final Process _process;
@@ -485,6 +489,103 @@ Future<void> _mcp(WidgetTester tester) async {
   await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
   await _appears(tester, find.text('Testserver'));
   await _until(tester, () => mcpState.running, 'Dienst läuft wieder');
+}
+
+/// Fernverwaltung: Die Kommandozeile spielt mit eigenem Tresor ein zweites Gerät – etwa einen Container ohne
+/// Bildschirm –, gleicht über den Sync-Server ab und stimmt der Fernverwaltung zu. Die App stellt seine Freigaben
+/// ein und beantwortet seine Rückfrage; Frage und Antwort reisen über den Abgleich.
+Future<void> _remoteMcp(WidgetTester tester) async {
+  _step('Fernverwaltung');
+  final folder = Directory.systemTemp.createTempSync('tephra-fern');
+  final vault = '${folder.path}/vault.tephra';
+  final env = {'TEPHRA_VAULT': vault, 'TEPHRA_PASSWORD': _password};
+  Future<String> run(List<String> args) async {
+    final result = await Process.run(_cli, args, environment: env);
+    expect(result.exitCode, 0, reason: '${args.join(' ')}: ${result.stdout}${result.stderr}');
+    return '${result.stdout}';
+  }
+
+  Process? daemon;
+  try {
+    await run(['sync', 'join', '--allow-http', _sync, _account]);
+    expect(await run(['mcp', 'remote', 'on', '--name', 'fernes Gerät']), contains('aus der Ferne verwaltet'));
+    await run(['sync', 'now']);
+    daemon = await Process.start(_cli, ['daemon'], environment: env);
+    final log = StringBuffer();
+    daemon.stderr.transform(utf8.decoder).listen(log.write);
+    await _until(tester, () => log.toString().contains('Rückfragen gehen an die anderen Geräte'), 'Dienst läuft');
+
+    // In der App erscheint das Gerät, sobald der Abgleich es gebracht hat.
+    await _tap(tester, find.text('MCP').first);
+    await _appears(tester, find.byKey(const Key('mcp-device-fernes Gerät')));
+    await _shot(tester, '18-mcp-geraete');
+    await _tap(tester, find.byKey(const Key('mcp-device-fernes Gerät')));
+    await _appears(tester, find.byKey(const Key('mcp-remove-device')));
+    expect(find.byKey(const Key('mcp-service')), findsNothing, reason: 'den Dienst schaltet das Gerät selbst');
+
+    // Client und Freigabe für das Gerät, ganz von hier aus.
+    await _tap(tester, find.byKey(const Key('mcp-add-client')));
+    await _type(tester, find.byKey(const Key('mcp-client-name')), 'fern');
+    await _tap(tester, find.widgetWithText(FilledButton, t('Anlegen', 'Add')));
+    await _appears(tester, find.byKey(const Key('mcp-token')));
+    final token = tester.widget<SelectableText>(find.byKey(const Key('mcp-token'))).data!;
+    await _tap(tester, find.byKey(const Key('mcp-token-done')));
+    await _tap(tester, find.byKey(const Key('mcp-grant-fern')));
+    await _tap(tester, find.widgetWithText(FilledButton, t('Freigeben', 'Share')));
+    await _appears(tester, find.text(t('Mit Bestätigung', 'Confirm each')));
+    await _shot(tester, '19-mcp-fernes-geraet');
+
+    // Das Gerät übernimmt Client und Freigabe mit dem Abgleich.
+    _Bridge? bridge;
+    final deadline = DateTime.now().add(const Duration(seconds: 40));
+    while (bridge == null) {
+      final attempt = await _Bridge.start(token, vault: vault);
+      try {
+        await attempt.initialize().timeout(const Duration(seconds: 3));
+        final (hosts, _) = await attempt.tool('list_hosts', {});
+        if (hosts.contains('Testserver')) {
+          bridge = attempt;
+          continue;
+        }
+      } catch (_) {}
+      await attempt.close();
+      if (DateTime.now().isAfter(deadline)) fail('Zeitüberschreitung: Freigabe auf dem Gerät');
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    // Die Rückfrage des Geräts erscheint hier; die Antwort reist zurück, und der Befehl läuft dort.
+    final asked = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': 'echo vom fernen Gerät'});
+    await _appears(tester, find.byKey(const Key('mcp-approval')));
+    expect(find.textContaining('fernes Gerät'), findsWidgets);
+    await _shot(tester, '20-mcp-rueckfrage-fern');
+    await _answerApproval(tester, 'echo vom fernen Gerät', const Key('mcp-approval-once'));
+    final (output, failed) = await asked.timeout(const Duration(seconds: 40));
+    expect(failed, isFalse, reason: output);
+    expect(output, contains('vom fernen Gerät'));
+
+    // Abgelehnt kommt ebenso zurück.
+    final refused = bridge.tool('ssh_exec', {'host': 'Testserver', 'command': 'echo bitte nicht'});
+    await _answerApproval(tester, 'echo bitte nicht', const Key('mcp-approval-deny'));
+    final (_, denied) = await refused.timeout(const Duration(seconds: 40));
+    expect(denied, isTrue);
+    await bridge.close();
+
+    // Aus der Verwaltung genommen, darf das Gerät nichts mehr.
+    await _tap(tester, find.byKey(const Key('mcp-remove-device')));
+    await _tap(tester, find.widgetWithText(FilledButton, t('Entfernen', 'Remove')));
+    await _until(tester, () => mcpDevices().isEmpty, 'Gerät entfernt');
+    final cut = DateTime.now().add(const Duration(seconds: 40));
+    while (true) {
+      final late = await _Bridge.start(token, vault: vault);
+      if (await late.close() != 0) break;
+      if (DateTime.now().isAfter(cut)) fail('Zeitüberschreitung: Gerät nach dem Entfernen noch offen');
+      await tester.pump(const Duration(seconds: 1));
+    }
+  } finally {
+    daemon?.kill(ProcessSignal.sigterm);
+    await daemon?.exitCode.timeout(const Duration(seconds: 10), onTimeout: () => -1);
+    folder.deleteSync(recursive: true);
+  }
 }
 
 void main() {
@@ -776,6 +877,7 @@ void main() {
       await _tap(tester, find.byKey(const Key('sync-register')));
       await _syncDone(tester, _sync);
       await _tap(tester, find.text(t('Schließen', 'Close')));
+      if (_cli.isNotEmpty && Platform.isLinux) await _remoteMcp(tester);
     }
 
     // ---- Aktualisierung: echte Veröffentlichung finden, laden und ihre Prüfsumme prüfen

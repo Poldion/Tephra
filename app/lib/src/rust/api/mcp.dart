@@ -9,7 +9,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mcp.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `change`, `lock`, `policy`, `unknown_client`, `view`
+// These functions are ignored because they are not marked as `pub`: `change`, `device_id`, `load`, `lock`, `policy`, `unknown_client`, `view`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `AppApprover`, `Service`, `Withdraw`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `approve`, `drop`
 
@@ -33,30 +33,40 @@ bool mcpAnswer({required int id, required McpAnswer answer}) =>
     RustLib.instance.api.crateApiMcpMcpAnswer(id: id, answer: answer);
 
 /// Clients mit ihren Freigaben und der Stand des Not-Aus.
-McpOverview mcpOverview() => RustLib.instance.api.crateApiMcpMcpOverview();
+McpOverview mcpOverview({String? device}) =>
+    RustLib.instance.api.crateApiMcpMcpOverview(device: device);
 
 /// Setzt die längste Laufzeit, die ein Modell für einen Befehl wählen darf (eine Minute bis ein Tag).
-void mcpSetMaxTimeout({required int secs}) =>
-    RustLib.instance.api.crateApiMcpMcpSetMaxTimeout(secs: secs);
+void mcpSetMaxTimeout({String? device, required int secs}) => RustLib
+    .instance
+    .api
+    .crateApiMcpMcpSetMaxTimeout(device: device, secs: secs);
 
 /// Legt einen Client an. Zurück kommt sein Token – nur dieses eine Mal; der
 /// Tresor behält davon bloß einen Hash.
-String mcpAddClient({required String name}) =>
-    RustLib.instance.api.crateApiMcpMcpAddClient(name: name);
+String mcpAddClient({String? device, required String name}) =>
+    RustLib.instance.api.crateApiMcpMcpAddClient(device: device, name: name);
 
 /// Entfernt einen Client; sein Token wird damit ungültig.
-void mcpRemoveClient({required String clientId}) =>
-    RustLib.instance.api.crateApiMcpMcpRemoveClient(clientId: clientId);
+void mcpRemoveClient({String? device, required String clientId}) => RustLib
+    .instance
+    .api
+    .crateApiMcpMcpRemoveClient(device: device, clientId: clientId);
 
 /// Sperrt einen Client oder gibt ihn wieder frei, ohne seine Freigaben zu verlieren.
-void mcpSetClientDisabled({required String clientId, required bool disabled}) =>
-    RustLib.instance.api.crateApiMcpMcpSetClientDisabled(
-      clientId: clientId,
-      disabled: disabled,
-    );
+void mcpSetClientDisabled({
+  String? device,
+  required String clientId,
+  required bool disabled,
+}) => RustLib.instance.api.crateApiMcpMcpSetClientDisabled(
+  device: device,
+  clientId: clientId,
+  disabled: disabled,
+);
 
 /// Gibt einem Client einen Host frei. Eine bestehende Freigabe desselben Hosts wird ersetzt.
 void mcpGrant({
+  String? device,
   required String clientId,
   required String hostId,
   required McpLevel level,
@@ -65,6 +75,7 @@ void mcpGrant({
   required bool filesRead,
   required bool filesWrite,
 }) => RustLib.instance.api.crateApiMcpMcpGrant(
+  device: device,
   clientId: clientId,
   hostId: hostId,
   level: level,
@@ -75,17 +86,48 @@ void mcpGrant({
 );
 
 /// Entzieht einem Client einen Host.
-void mcpRevoke({required String clientId, required String hostId}) => RustLib
-    .instance
-    .api
-    .crateApiMcpMcpRevoke(clientId: clientId, hostId: hostId);
+void mcpRevoke({
+  String? device,
+  required String clientId,
+  required String hostId,
+}) => RustLib.instance.api.crateApiMcpMcpRevoke(
+  device: device,
+  clientId: clientId,
+  hostId: hostId,
+);
 
 /// Not-Aus: Mit `false` wird jeder weitere Zugriff abgelehnt, und laufende
 /// Sitzungen und Verbindungen des Dienstes enden binnen Sekunden.
-void mcpSetEnabled({required bool enabled}) =>
-    RustLib.instance.api.crateApiMcpMcpSetEnabled(enabled: enabled);
+void mcpSetEnabled({String? device, required bool enabled}) => RustLib
+    .instance
+    .api
+    .crateApiMcpMcpSetEnabled(device: device, enabled: enabled);
 
 bool mcpEnabled() => RustLib.instance.api.crateApiMcpMcpEnabled();
+
+/// Alle fernverwalteten Geräte dieses Tresors.
+List<McpDeviceView> mcpDevices() =>
+    RustLib.instance.api.crateApiMcpMcpDevices();
+
+/// Nimmt ein Gerät aus der Verwaltung. Dort ist danach nichts mehr erlaubt, bis es selbst wieder zustimmt.
+void mcpRemoveDevice({required String device}) =>
+    RustLib.instance.api.crateApiMcpMcpRemoveDevice(device: device);
+
+/// Rückfragen anderer Geräte, auf die noch niemand geantwortet hat, älteste zuerst. Die Texte sind entschärft.
+List<McpRequest> mcpRemoteRequests() =>
+    RustLib.instance.api.crateApiMcpMcpRemoteRequests();
+
+/// Beantwortet die Rückfrage eines anderen Geräts. `by` ist der Name dieses Geräts. `false`, wenn sie sich
+/// inzwischen erledigt hat oder die Zustimmung zu früh kam, um ihr gegolten zu haben.
+bool mcpRemoteAnswer({
+  required int id,
+  required McpAnswer answer,
+  required String by,
+}) => RustLib.instance.api.crateApiMcpMcpRemoteAnswer(
+  id: id,
+  answer: answer,
+  by: by,
+);
 
 /// Die jüngsten Einträge des Protokolls, neueste zuerst.
 List<McpAuditEntry> mcpAudit({required int limit}) =>
@@ -190,6 +232,56 @@ class McpClient {
           grants == other.grants;
 }
 
+/// Ein Gerät, das der Fernverwaltung zugestimmt hat (`tephra mcp remote on`).
+class McpDeviceView {
+  final String id;
+  final String name;
+
+  /// `false` ist der Not-Aus.
+  final bool enabled;
+  final int clients;
+
+  /// Letztes Lebenszeichen (Unix-Zeit in ms); 0, wenn keins.
+  final PlatformInt64 seenMs;
+  final String version;
+
+  /// Ob es dieses Gerät selbst ist.
+  final bool thisDevice;
+
+  const McpDeviceView({
+    required this.id,
+    required this.name,
+    required this.enabled,
+    required this.clients,
+    required this.seenMs,
+    required this.version,
+    required this.thisDevice,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      enabled.hashCode ^
+      clients.hashCode ^
+      seenMs.hashCode ^
+      version.hashCode ^
+      thisDevice.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is McpDeviceView &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          enabled == other.enabled &&
+          clients == other.clients &&
+          seenMs == other.seenMs &&
+          version == other.version &&
+          thisDevice == other.thisDevice;
+}
+
 @freezed
 sealed class McpEvent with _$McpEvent {
   const McpEvent._();
@@ -291,6 +383,9 @@ class McpOverview {
 /// schon so umgeschrieben, dass sie die Anzeige nicht verändern können.
 class McpRequest {
   final int id;
+
+  /// Name des Geräts, das fragt; leer für den Dienst dieser App.
+  final String device;
   final String client;
   final String host;
   final McpRequestKind kind;
@@ -309,6 +404,7 @@ class McpRequest {
 
   const McpRequest({
     required this.id,
+    required this.device,
     required this.client,
     required this.host,
     required this.kind,
@@ -321,6 +417,7 @@ class McpRequest {
   @override
   int get hashCode =>
       id.hashCode ^
+      device.hashCode ^
       client.hashCode ^
       host.hashCode ^
       kind.hashCode ^
@@ -335,6 +432,7 @@ class McpRequest {
       other is McpRequest &&
           runtimeType == other.runtimeType &&
           id == other.id &&
+          device == other.device &&
           client == other.client &&
           host == other.host &&
           kind == other.kind &&

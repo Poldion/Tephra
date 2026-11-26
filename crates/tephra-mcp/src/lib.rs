@@ -9,10 +9,12 @@
 //! * [`McpServer`] – die Werkzeuge selbst
 //! * [`audit`] – Protokoll jedes Aufrufs
 //! * [`service`] – der lokale Kanal, über den sich Clients verbinden
+//! * [`remote`] – Fernverwaltung der Freigaben und Rückfragen über den abgeglichenen Tresor
 
 pub mod audit;
 pub mod policy;
 pub mod readonly;
+pub mod remote;
 mod server;
 pub mod service;
 mod util;

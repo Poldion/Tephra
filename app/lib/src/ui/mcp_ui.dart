@@ -57,9 +57,25 @@ String mcpConfigSnippet(String token) => const JsonEncoder.withIndent('  ').conv
   },
 });
 
-/// MCP: der Dienst für Sprachmodelle, seine Clients und deren Freigaben.
+/// Eintrag für einen MCP-Client auf einem anderen Gerät: Dort liegt `tephra` im `PATH` und der Tresor am üblichen
+/// Ort.
+String remoteConfigSnippet(String token) => const JsonEncoder.withIndent('  ').convert({
+  'mcpServers': {
+    'tephra': {
+      'command': 'tephra',
+      'args': ['mcp', 'serve'],
+      'env': {'TEPHRA_MCP_TOKEN': token},
+    },
+  },
+});
+
+/// MCP: der Dienst für Sprachmodelle, seine Clients und deren Freigaben – die dieses Geräts oder, mit [device],
+/// die eines fernverwalteten Geräts. Auf dem Telefon, das selbst keinen Dienst anbietet, nur die Geräte.
 class McpPage extends StatefulWidget {
-  const McpPage({super.key});
+  const McpPage({super.key, this.device});
+
+  /// Ein fernverwaltetes Gerät (aus [mcpDevices]); `null` für dieses Gerät.
+  final McpDeviceView? device;
 
   @override
   State<McpPage> createState() => _McpPageState();
@@ -67,21 +83,66 @@ class McpPage extends StatefulWidget {
 
 class _McpPageState extends State<McpPage> {
   McpOverview? _overview;
+  List<McpDeviceView> _devices = const [];
   String? _error;
+  Timer? _refresh;
+
+  String? get _device => widget.device?.id;
+
+  /// Ob die Seite die Freigaben eines Geräts zeigt (dieses oder ein fernverwaltetes) statt nur die Geräteliste.
+  bool get _policy => widget.device != null || mcpState.supported;
 
   @override
   void initState() {
     super.initState();
     _reload();
+    // Was andere Geräte ändern, kommt mit dem Abgleich; die Seite zeigt es von selbst.
+    _refresh = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) setState(_reload);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
   }
 
   void _reload() {
     try {
-      _overview = mcpOverview();
+      _overview = _policy ? mcpOverview(device: _device) : null;
+      _devices = widget.device == null ? mcpDevices().where((d) => !d.thisDevice).toList() : const [];
       _error = null;
     } catch (error) {
       _error = errorText(error);
     }
+  }
+
+  Future<void> _openDevice(McpDeviceView device) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          body: SafeArea(child: McpPage(device: device)),
+        ),
+      ),
+    );
+    if (mounted) setState(_reload);
+  }
+
+  Future<void> _removeDevice() async {
+    final device = widget.device!;
+    final ok = await confirm(
+      context,
+      title: t('Aus der Verwaltung nehmen?', 'Remove from management?'),
+      body: t(
+        'Auf „${device.name}“ ist danach kein Zugriff über MCP mehr erlaubt, bis du dort „tephra mcp remote on“ erneut ausführst. Die Freigaben gehen verloren.',
+        'After that no access through MCP is allowed on "${device.name}" until you run "tephra mcp remote on" there again. Its access rules are lost.',
+      ),
+      action: t('Entfernen', 'Remove'),
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    if (attempt(context, () => mcpRemoveDevice(device: device.id))) Navigator.of(context).pop();
   }
 
   void _change(void Function() action) {
@@ -90,13 +151,16 @@ class _McpPageState extends State<McpPage> {
   }
 
   Future<void> _addClient() async {
-    final created = await showDialog<(String, String)>(context: context, builder: (_) => const _ClientDialog());
+    final created = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => _ClientDialog(device: _device),
+    );
     if (created == null || !mounted) return;
     setState(_reload);
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _TokenDialog(name: created.$1, token: created.$2),
+      builder: (_) => _TokenDialog(name: created.$1, token: created.$2, device: widget.device?.name),
     );
   }
 
@@ -111,7 +175,7 @@ class _McpPageState extends State<McpPage> {
       action: t('Entfernen', 'Remove'),
       destructive: true,
     );
-    if (ok && mounted) _change(() => mcpRemoveClient(clientId: client.id));
+    if (ok && mounted) _change(() => mcpRemoveClient(device: _device, clientId: client.id));
   }
 
   Future<void> _grant(McpClient client, [McpGrant? existing]) async {
@@ -134,7 +198,7 @@ class _McpPageState extends State<McpPage> {
     }
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => _GrantDialog(client: client, hosts: free.toList(), existing: existing),
+      builder: (_) => _GrantDialog(client: client, hosts: free.toList(), existing: existing, device: _device),
     );
     if (saved == true && mounted) setState(_reload);
   }
@@ -151,39 +215,55 @@ class _McpPageState extends State<McpPage> {
       action: t('Entziehen', 'Withdraw'),
       destructive: true,
     );
-    if (ok && mounted) _change(() => mcpRevoke(clientId: client.id, hostId: grant.hostId));
+    if (ok && mounted) _change(() => mcpRevoke(device: _device, clientId: client.id, hostId: grant.hostId));
   }
 
   @override
   Widget build(BuildContext context) {
     final overview = _overview;
+    final device = widget.device;
     return SectionPage(
-      title: 'MCP',
+      title: device == null ? 'MCP' : device.name,
+      back: device != null,
       actions: [
-        OutlinedButton.icon(
-          key: const Key('mcp-audit'),
-          icon: const Icon(Icons.receipt_long_outlined),
-          label: Text(t('Protokoll', 'Log')),
-          onPressed: () => showDialog<void>(context: context, builder: (_) => const _AuditDialog()),
-        ),
-        FilledButton.icon(
-          key: const Key('mcp-add-client'),
-          icon: const Icon(Icons.add_rounded),
-          label: Text(t('Client anlegen', 'Add client')),
-          onPressed: _addClient,
-        ),
+        if (device == null && mcpState.supported)
+          OutlinedButton.icon(
+            key: const Key('mcp-audit'),
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: Text(t('Protokoll', 'Log')),
+            onPressed: () => showDialog<void>(context: context, builder: (_) => const _AuditDialog()),
+          ),
+        if (device != null)
+          OutlinedButton.icon(
+            key: const Key('mcp-remove-device'),
+            icon: const Icon(Icons.link_off_rounded),
+            label: Text(t('Entfernen', 'Remove')),
+            onPressed: _removeDevice,
+          ),
+        if (_policy)
+          FilledButton.icon(
+            key: const Key('mcp-add-client'),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(t('Client anlegen', 'Add client')),
+            onPressed: _addClient,
+          ),
       ],
-      child: _error != null || overview == null
+      child: _error != null || (_policy && overview == null)
           ? EmptyState(icon: Icons.error_outline_rounded, title: t('Fehler', 'Error'), hint: _error ?? '')
+          : overview == null
+          ? ListView(padding: const EdgeInsets.only(bottom: 20), children: [_devicesCard(context)])
           : ListView(
               padding: const EdgeInsets.only(bottom: 20),
               children: [
+                if (device != null) ...[_deviceInfo(context, device), const SizedBox(height: 8)],
                 _ServiceCard(
+                  service: device == null,
                   enabled: overview.enabled,
-                  onEnabled: (v) => _change(() => mcpSetEnabled(enabled: v)),
+                  onEnabled: (v) => _change(() => mcpSetEnabled(device: _device, enabled: v)),
                   maxTimeout: overview.maxTimeoutSecs,
-                  onMaxTimeout: (secs) => _change(() => mcpSetMaxTimeout(secs: secs)),
+                  onMaxTimeout: (secs) => _change(() => mcpSetMaxTimeout(device: _device, secs: secs)),
                 ),
+                if (device == null) ...[const SizedBox(height: 8), _devicesCard(context)],
                 const SizedBox(height: 8),
                 if (overview.clients.isEmpty)
                   Padding(
@@ -234,7 +314,9 @@ class _McpPageState extends State<McpPage> {
                   tooltip: t('Mehr', 'More'),
                   onSelected: (action) => action == 'remove'
                       ? _removeClient(client)
-                      : _change(() => mcpSetClientDisabled(clientId: client.id, disabled: !client.disabled)),
+                      : _change(
+                          () => mcpSetClientDisabled(device: _device, clientId: client.id, disabled: !client.disabled),
+                        ),
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       value: 'block',
@@ -284,6 +366,80 @@ class _McpPageState extends State<McpPage> {
     );
   }
 
+  /// Name, letztes Lebenszeichen und Version eines fernverwalteten Geräts.
+  Widget _deviceInfo(BuildContext context, McpDeviceView device) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.dns_outlined),
+        title: Text(t('Fernverwaltetes Gerät', 'Remotely managed device')),
+        subtitle: Text(
+          '${_seen(device)} · Tephra ${device.version}\n${t('Änderungen gelten dort, sobald es abgeglichen hat. Rückfragen „Mit Bestätigung“ erscheinen hier.', 'Changes apply there as soon as it has synced. Questions for "Confirm each" appear here.')}',
+          style: TextStyle(color: muted),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
+  static String _seen(McpDeviceView device) {
+    if (device.seenMs <= 0) return t('noch nie gesehen', 'never seen');
+    final ago = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(device.seenMs));
+    if (ago.inMinutes < 2) return t('gerade aktiv', 'active just now');
+    if (ago.inHours < 2) return t('zuletzt vor ${ago.inMinutes} min', 'last seen ${ago.inMinutes} min ago');
+    final when = formatTime(DateTime.fromMillisecondsSinceEpoch(device.seenMs));
+    return t('zuletzt $when', 'last seen $when');
+  }
+
+  /// Die fernverwalteten Geräte des Tresors, oder wie man eins dazu bekommt.
+  Widget _devicesCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Card(
+      key: const Key('mcp-devices'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.devices_other_rounded),
+              title: Text(t('Andere Geräte', 'Other devices')),
+              subtitle: Text(
+                _devices.isEmpty
+                    ? t(
+                        'Noch keins. Auf einem Gerät mit „tephra daemon“ – etwa einem Container ohne Bildschirm – stimmst du einmal mit „tephra mcp remote on“ zu. Danach stellst du seine Freigaben hier ein, und seine Rückfragen erscheinen hier.',
+                        'None yet. On a device running "tephra daemon" – such as a container without a screen – agree once with "tephra mcp remote on". Then you set its access here, and its questions appear here.',
+                      )
+                    : t(
+                        'Geräte, die der Fernverwaltung zugestimmt haben. Ihre Freigaben stellst du hier ein.',
+                        'Devices that agreed to remote management. You set their access here.',
+                      ),
+                style: TextStyle(color: muted),
+              ),
+            ),
+            for (final device in _devices)
+              ListTile(
+                key: Key('mcp-device-${device.name}'),
+                contentPadding: const EdgeInsets.only(left: 72, right: 16),
+                title: Text(device.name),
+                subtitle: Text(
+                  [
+                    if (!device.enabled) t('Not-Aus', 'kill switch on'),
+                    t('${device.clients} Client(s)', '${device.clients} client(s)'),
+                    _seen(device),
+                  ].join(' · '),
+                  style: TextStyle(color: device.enabled ? muted : theme.colorScheme.error),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _openDevice(device),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _grantSummary(McpGrant grant) {
     final files = switch ((grant.filesRead, grant.filesWrite)) {
       (true, true) => t('Dateien lesen und schreiben', 'read and write files'),
@@ -303,12 +459,15 @@ class _McpPageState extends State<McpPage> {
 /// Schalter für den Dienst und der Not-Aus.
 class _ServiceCard extends StatelessWidget {
   const _ServiceCard({
+    required this.service,
     required this.enabled,
     required this.onEnabled,
     required this.maxTimeout,
     required this.onMaxTimeout,
   });
 
+  /// Ob der Schalter für den Dienst dieser App dazugehört (nicht bei einem fernverwalteten Gerät).
+  final bool service;
   final bool enabled;
   final ValueChanged<bool> onEnabled;
   final int maxTimeout;
@@ -344,18 +503,19 @@ class _ServiceCard extends StatelessWidget {
         return Card(
           child: Column(
             children: [
-              SwitchListTile(
-                key: const Key('mcp-service'),
-                value: on,
-                onChanged: mcpState.setEnabled,
-                secondary: const Icon(Icons.hub_outlined),
-                title: Text(t('Dienst für Sprachmodelle', 'Service for language models')),
-                subtitle: Text(
-                  status,
-                  key: const Key('mcp-status'),
-                  style: TextStyle(color: on && error != null ? scheme.error : null),
+              if (service)
+                SwitchListTile(
+                  key: const Key('mcp-service'),
+                  value: on,
+                  onChanged: mcpState.setEnabled,
+                  secondary: const Icon(Icons.hub_outlined),
+                  title: Text(t('Dienst für Sprachmodelle', 'Service for language models')),
+                  subtitle: Text(
+                    status,
+                    key: const Key('mcp-status'),
+                    style: TextStyle(color: on && error != null ? scheme.error : null),
+                  ),
                 ),
-              ),
               SwitchListTile(
                 key: const Key('mcp-enabled'),
                 value: enabled,
@@ -400,7 +560,9 @@ class _ServiceCard extends StatelessWidget {
 }
 
 class _ClientDialog extends StatefulWidget {
-  const _ClientDialog();
+  const _ClientDialog({this.device});
+
+  final String? device;
 
   @override
   State<_ClientDialog> createState() => _ClientDialogState();
@@ -419,7 +581,7 @@ class _ClientDialogState extends State<_ClientDialog> {
   void _save() {
     try {
       final name = _name.text.trim();
-      final token = mcpAddClient(name: name);
+      final token = mcpAddClient(device: widget.device, name: name);
       Navigator.pop(context, (name, token));
     } catch (error) {
       setState(() => _error = errorText(error));
@@ -454,10 +616,13 @@ class _ClientDialogState extends State<_ClientDialog> {
 
 /// Zeigt das Token eines neuen Clients – das einzige Mal, dass es zu sehen ist.
 class _TokenDialog extends StatelessWidget {
-  const _TokenDialog({required this.name, required this.token});
+  const _TokenDialog({required this.name, required this.token, this.device});
 
   final String name;
   final String token;
+
+  /// Name des fernverwalteten Geräts, für das der Client angelegt wurde; `null` für dieses Gerät.
+  final String? device;
 
   Future<void> _copy(BuildContext context, String text, String message) async {
     await Clipboard.setData(ClipboardData(text: text));
@@ -467,7 +632,7 @@ class _TokenDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final snippet = mcpConfigSnippet(token);
+    final snippet = device == null ? mcpConfigSnippet(token) : remoteConfigSnippet(token);
     Widget block(String text, {Key? key}) => Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -495,7 +660,14 @@ class _TokenDialog extends StatelessWidget {
             const SizedBox(height: 12),
             block(token, key: const Key('mcp-token')),
             const SizedBox(height: 16),
-            Text(t('Eintrag für die Konfiguration des Clients:', 'Entry for the configuration of the client:')),
+            Text(
+              device == null
+                  ? t('Eintrag für die Konfiguration des Clients:', 'Entry for the configuration of the client:')
+                  : t(
+                      'Eintrag für die Konfiguration des Clients auf „$device“. Das Gerät übernimmt den neuen Client mit dem nächsten Abgleich.',
+                      'Entry for the configuration of the client on "$device". The device picks up the new client with its next sync.',
+                    ),
+            ),
             const SizedBox(height: 8),
             block(snippet),
           ],
@@ -522,8 +694,9 @@ class _TokenDialog extends StatelessWidget {
 
 /// Gibt einem Client einen Host frei oder ändert eine Freigabe.
 class _GrantDialog extends StatefulWidget {
-  const _GrantDialog({required this.client, required this.hosts, this.existing});
+  const _GrantDialog({required this.client, required this.hosts, this.existing, this.device});
 
+  final String? device;
   final McpClient client;
   final List<HostView> hosts;
   final McpGrant? existing;
@@ -559,6 +732,7 @@ class _GrantDialogState extends State<_GrantDialog> {
     }
     try {
       mcpGrant(
+        device: widget.device,
         clientId: widget.client.id,
         hostId: host,
         level: _level,
@@ -762,8 +936,15 @@ class _McpApprovalsState extends State<McpApprovals> {
       barrierDismissible: false,
       builder: (_) => _ApprovalDialog(request: asked),
     );
-    // Ohne ausdrückliche Antwort gilt die Anfrage als abgelehnt.
-    mcpState.answer(asked, reply ?? McpAnswer.deny);
+    // Ohne ausdrückliche Antwort gilt eine Anfrage des eigenen Dienstes als abgelehnt. Die eines anderen Geräts
+    // hat sich dann anderswo erledigt oder kommt gleich wieder (eine eigene ging vor).
+    if (reply != null) {
+      mcpState.answer(asked, reply);
+    } else if (asked.device.isEmpty) {
+      mcpState.answer(asked, McpAnswer.deny);
+    } else {
+      _shown = null;
+    }
   }
 
   @override
@@ -852,10 +1033,15 @@ class _ApprovalDialogState extends State<_ApprovalDialog> {
     return AlertDialog(
       key: const Key('mcp-approval'),
       title: Text(
-        t(
-          'Anfrage von „${request.client}“ für „${request.host}“',
-          'Request from "${request.client}" for "${request.host}"',
-        ),
+        request.device.isEmpty
+            ? t(
+                'Anfrage von „${request.client}“ für „${request.host}“',
+                'Request from "${request.client}" for "${request.host}"',
+              )
+            : t(
+                'Anfrage auf „${request.device}“ von „${request.client}“ für „${request.host}“',
+                'Request on "${request.device}" from "${request.client}" for "${request.host}"',
+              ),
       ),
       scrollable: true,
       content: SizedBox(

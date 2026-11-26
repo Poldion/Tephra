@@ -264,6 +264,68 @@ impl Entity for Settings {
     const KIND: ItemKind = ItemKind::Settings;
 }
 
+/// MCP-Freigaben eines Geräts, das der Fernverwaltung zugestimmt hat (`tephra mcp remote on`).
+///
+/// Das Gerät liest seine Freigaben dann aus diesem Datensatz statt aus seinem lokalen Geheimnis; jedes andere
+/// Gerät mit diesem Tresor kann sie ändern. Die drei Teile der Freigaben stehen in getrennten Feldern, damit
+/// gleichzeitige Änderungen an verschiedenen Teilen beim Zusammenführen beide erhalten bleiben. Ihr Aufbau gehört
+/// zu `tephra-mcp` (`McpPolicy`), hier steht er nur als JSON.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct McpDevice {
+    /// Name des Geräts, wie ihn die Verwaltung anzeigt.
+    pub name: String,
+    /// Hauptschalter; `false` ist der Not-Aus.
+    pub enabled: bool,
+    /// Clients mit ihren Freigaben (`Vec<ClientPolicy>`).
+    pub clients: serde_json::Value,
+    /// Grenzen (`Limits`).
+    pub limits: serde_json::Value,
+    /// Wann das Gerät zuletzt ein Lebenszeichen hinterlassen hat (Unix-Zeit in ms).
+    pub seen_ms: u64,
+    /// Version von Tephra auf dem Gerät.
+    pub version: String,
+    /// Ob das Gerät Rückfragen („Mit Bestätigung“) an andere Geräte weitergibt.
+    pub remote_approvals: bool,
+}
+
+impl Entity for McpDevice {
+    const KIND: ItemKind = ItemKind::McpDevice;
+}
+
+/// Rückfrage eines fernverwalteten Geräts: Das Gerät legt sie an und wartet, ein anderes Gerät trägt die Antwort
+/// ein. Danach (oder nach Ablauf der Frist) löscht das Gerät sie wieder. Die Texte stammen vom Modell und müssen
+/// vor dem Anzeigen entschärft werden.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct McpApproval {
+    /// Kennung des zugehörigen [`McpDevice`].
+    pub device: String,
+    pub device_name: String,
+    pub client: String,
+    pub host: String,
+    /// `command`, `session`, `file_read`, `file_write` oder `host_key`.
+    pub kind: String,
+    /// Der Befehl, der Pfad oder der Hostschlüssel.
+    pub subject: String,
+    /// Eingabedaten eines Befehls oder der Anfang des Inhalts einer Datei.
+    pub extra: Option<String>,
+    pub bytes: Option<u64>,
+    /// Anfang der SHA-256-Prüfsumme einer Datei, die geschrieben werden soll.
+    pub checksum: Option<String>,
+    pub created_ms: u64,
+    /// Danach gilt die Rückfrage als abgelehnt.
+    pub expires_ms: u64,
+    /// Leer, solange niemand geantwortet hat; sonst `once`, `session` oder `deny`.
+    pub answer: String,
+    /// Name des Geräts, auf dem geantwortet wurde.
+    pub answered_by: String,
+}
+
+impl Entity for McpApproval {
+    const KIND: ItemKind = ItemKind::McpApproval;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

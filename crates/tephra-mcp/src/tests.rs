@@ -752,3 +752,158 @@ async fn gibt_der_client_auf_endet_auch_der_befehl() {
     assert_eq!(finished.detail, "sleep 60000");
     assert!(finished.note.contains("Cancelled by the client"), "{}", finished.note);
 }
+
+// ------------------------------------------------------------------ Fernverwaltung
+
+mod remote {
+    use crate::policy::{AccessLevel, HostGrant, McpPolicy};
+    use crate::remote::{self, RemoteApprover};
+    use crate::{Action, ApprovalAnswer, ApprovalRequest, Approver};
+    use tephra_core::model::{ItemId, McpApproval, McpDevice};
+    use tephra_core::{Core, KdfParams};
+
+    fn vault() -> (Core, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tmp");
+        let (core, _) =
+            Core::create(&dir.path().join("t.tephra"), "passwort", KdfParams::INSECURE_FOR_TESTS).expect("tresor");
+        (core, dir)
+    }
+
+    fn with_client(core: &Core) -> (String, ItemId) {
+        let host = ItemId::new();
+        let mut policy = McpPolicy::load(core).expect("laden");
+        let (id, _token) = policy.add_client("claude").expect("client");
+        policy
+            .client_mut(&id)
+            .expect("da")
+            .hosts
+            .insert(host, HostGrant { level: AccessLevel::Auto, ..Default::default() });
+        policy.save(core).expect("speichern");
+        (id, host)
+    }
+
+    #[test]
+    fn zustimmung_verlegt_die_freigaben_in_den_abgeglichenen_datensatz() {
+        let (core, _dir) = vault();
+        let (client, host) = with_client(&core);
+        assert_eq!(remote::managing_device(&core).expect("lesen"), None);
+
+        let device = remote::enable(&core, "container", "0.11.0").expect("einschalten");
+        assert_eq!(remote::managing_device(&core).expect("lesen"), Some(device));
+        let record = core.with_vault(|v| v.get::<McpDevice>(device)).expect("lesen").expect("da");
+        assert_eq!(record.name, "container");
+        assert!(record.enabled && record.remote_approvals);
+        // Gelesen wird jetzt aus dem Datensatz – was ein anderes Gerät dort ändert, gilt sofort.
+        let mut changed = remote::load_device(&core, device).expect("lesen").expect("da");
+        assert!(changed.client(&client).expect("client").hosts.contains_key(&host));
+        changed.client_mut(&client).expect("client").hosts.clear();
+        remote::save_device(&core, device, &changed).expect("speichern");
+        assert!(McpPolicy::load(&core).expect("laden").client(&client).expect("client").hosts.is_empty());
+        // Auch Änderungen auf dem Gerät selbst landen im Datensatz.
+        let mut local = McpPolicy::load(&core).expect("laden");
+        local.enabled = false;
+        local.save(&core).expect("speichern");
+        assert!(!remote::load_device(&core, device).expect("lesen").expect("da").enabled);
+
+        let summary = remote::devices(&core).expect("liste");
+        assert_eq!(summary.len(), 1);
+        assert!(summary[0].this_device && !summary[0].enabled && summary[0].clients == 1);
+
+        // Zurücknehmen: Freigaben wieder lokal, Datensatz weg.
+        assert!(remote::disable(&core).expect("ausschalten"));
+        assert_eq!(remote::managing_device(&core).expect("lesen"), None);
+        assert!(core.with_vault(|v| v.get::<McpDevice>(device)).expect("lesen").is_none());
+        let back = McpPolicy::load(&core).expect("laden");
+        assert!(!back.enabled && back.client(&client).is_some());
+        assert!(!remote::disable(&core).expect("ausschalten"), "war schon aus");
+    }
+
+    #[test]
+    fn entferntes_geraet_darf_nichts_mehr() {
+        let (core, _dir) = vault();
+        with_client(&core);
+        let device = remote::enable(&core, "container", "0.11.0").expect("einschalten");
+        remote::remove_device(&core, device).expect("entfernen");
+        let policy = McpPolicy::load(&core).expect("laden");
+        assert!(!policy.enabled && policy.clients.is_empty());
+        assert!(McpPolicy::locked().save(&core).is_err(), "kein Datensatz zum Speichern");
+        // Stimmt das Gerät erneut zu, beginnt es gesperrt.
+        let again = remote::enable(&core, "container", "0.11.0").expect("einschalten");
+        assert_ne!(again, device);
+        assert!(!McpPolicy::load(&core).expect("laden").enabled);
+    }
+
+    fn request() -> ApprovalRequest {
+        ApprovalRequest {
+            client_name: "claude".into(),
+            host_id: ItemId::new(),
+            host_label: "web1".into(),
+            action: Action::Command { command: "systemctl restart nginx".into(), stdin: None },
+        }
+    }
+
+    /// Wartet, bis das Gerät seine Rückfrage abgelegt hat, und gibt sie zurück.
+    async fn asked(core: &Core) -> (ItemId, McpApproval) {
+        for _ in 0..100 {
+            if let Some(found) = core.with_vault(|v| v.list::<McpApproval>()).expect("liste").into_iter().next() {
+                return found;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("keine Rückfrage abgelegt");
+    }
+
+    #[tokio::test]
+    async fn rueckfrage_geht_ueber_den_tresor_und_wird_danach_geloescht() {
+        let (core, _dir) = vault();
+        let device = remote::enable(&core, "container", "0.11.0").expect("einschalten");
+        for (reply, expected) in [
+            (ApprovalAnswer::Once, ApprovalAnswer::Once),
+            (ApprovalAnswer::Session, ApprovalAnswer::Session),
+            (ApprovalAnswer::Deny, ApprovalAnswer::Deny),
+        ] {
+            let approver = RemoteApprover::new(core.clone());
+            let waiting = tokio::spawn(async move { approver.approve(&request()).await });
+            let (id, approval) = asked(&core).await;
+            assert_eq!(approval.device, device.to_string());
+            assert_eq!((approval.kind.as_str(), approval.subject.as_str()), ("command", "systemctl restart nginx"));
+            assert_eq!((approval.client.as_str(), approval.host.as_str()), ("claude", "web1"));
+            assert!(approval.answer.is_empty() && approval.expires_ms > approval.created_ms);
+            // Die eigenen Rückfragen bietet das Gerät sich selbst nicht an.
+            assert!(remote::pending_approvals(&core).expect("liste").is_empty());
+
+            assert!(remote::answer(&core, id, reply, "Telefon").expect("antworten"));
+            assert!(!remote::answer(&core, id, ApprovalAnswer::Once, "Telefon").expect("antworten"), "nur einmal");
+            assert_eq!(waiting.await.expect("fertig"), expected);
+            assert!(core.with_vault(|v| v.list::<McpApproval>()).expect("liste").is_empty(), "aufgeräumt");
+        }
+    }
+
+    #[tokio::test]
+    async fn ohne_fernverwaltung_wird_abgelehnt_und_fremde_rueckfragen_sind_sichtbar() {
+        let (core, _dir) = vault();
+        assert_eq!(RemoteApprover::new(core.clone()).approve(&request()).await, ApprovalAnswer::Deny);
+        assert!(core.with_vault(|v| v.list::<McpApproval>()).expect("liste").is_empty());
+
+        // Rückfrage eines anderen Geräts, eine abgelaufene und eine längst vergessene.
+        let now = crate::policy::now_ms();
+        let other = |created_ms: u64, expires_ms: u64| McpApproval {
+            device: ItemId::new().to_string(),
+            device_name: "anderes".into(),
+            kind: "session".into(),
+            created_ms,
+            expires_ms,
+            ..McpApproval::default()
+        };
+        let open = core.with_vault(|v| v.insert(&other(now, now + 60_000))).expect("anlegen");
+        let expired = core.with_vault(|v| v.insert(&other(now - 90_000, now - 1))).expect("anlegen");
+        let stale = core.with_vault(|v| v.insert(&other(0, 1))).expect("anlegen");
+        let pending = remote::pending_approvals(&core).expect("liste");
+        assert_eq!(pending.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![open]);
+        assert!(!remote::answer(&core, expired, ApprovalAnswer::Once, "Telefon").expect("antworten"));
+        assert_eq!(remote::cleanup(&core).expect("aufräumen"), 1);
+        let left: Vec<ItemId> =
+            core.with_vault(|v| v.list::<McpApproval>()).expect("liste").into_iter().map(|(id, _)| id).collect();
+        assert!(left.contains(&open) && left.contains(&expired) && !left.contains(&stale));
+    }
+}

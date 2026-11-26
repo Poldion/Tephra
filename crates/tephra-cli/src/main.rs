@@ -283,6 +283,10 @@ enum McpCommand {
         #[arg(long)]
         max_timeout: Option<u64>,
     },
+    /// Fernverwaltung: Freigaben dieses Geräts lassen sich von anderen Geräten (etwa dem Telefon) ändern, und
+    /// Rückfragen gehen dorthin. Gilt erst, wenn dieses Gerät selbst zustimmt.
+    #[command(subcommand)]
+    Remote(RemoteCommand),
     /// Zeigt das Protokoll der Zugriffe.
     Audit {
         #[arg(short, long, default_value_t = 30)]
@@ -293,6 +297,21 @@ enum McpCommand {
         #[arg(long, env = "TEPHRA_MCP_TOKEN", hide_env_values = true)]
         token: String,
     },
+}
+
+#[derive(Subcommand)]
+enum RemoteCommand {
+    /// Zeigt, ob dieses Gerät fernverwaltet wird, und alle fernverwalteten Geräte des Tresors.
+    Status,
+    /// Stimmt der Fernverwaltung zu. Die bisherigen Freigaben ziehen in den abgeglichenen Tresor um; jedes Gerät
+    /// mit diesem Tresor kann sie danach ändern und Rückfragen beantworten.
+    On {
+        /// Name, unter dem das Gerät in der Verwaltung erscheint (Vorgabe: Rechnername).
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Nimmt die Zustimmung zurück; die Freigaben gelten wieder nur auf diesem Gerät.
+    Off,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -818,6 +837,54 @@ fn parse_forward(spec: &str) -> Fallible<(u16, String, u16)> {
     Ok((port.parse().map_err(|_| invalid())?, target_host.to_string(), target_port.parse().map_err(|_| invalid())?))
 }
 
+fn mcp_remote(core: &Core, command: RemoteCommand) -> Fallible {
+    use tephra_mcp::remote;
+    match command {
+        RemoteCommand::On { name } => {
+            let name = name.unwrap_or_else(device_name);
+            remote::enable(core, &name, env!("CARGO_PKG_VERSION")).map_err(text)?;
+            println!("„{name}“ wird jetzt aus der Ferne verwaltet.");
+            println!("Freigaben lassen sich auf jedem Gerät mit diesem Tresor ändern (in der App unter „MCP“);");
+            println!("Rückfragen „Mit Bestätigung“ gehen dorthin. Das braucht einen eingerichteten Abgleich und");
+            println!("einen laufenden „tephra daemon“. Zurücknehmen mit „tephra mcp remote off“.");
+            if Sync::new(core.clone()).connection().ok().flatten().is_none() {
+                println!("Hinweis: Dieses Gerät ist mit keinem Sync-Server verbunden („tephra sync join“).");
+            }
+        }
+        RemoteCommand::Off => {
+            if remote::disable(core).map_err(text)? {
+                println!("Die Freigaben gelten wieder nur auf diesem Gerät.");
+            } else {
+                println!("Dieses Gerät wurde nicht aus der Ferne verwaltet.");
+            }
+        }
+        RemoteCommand::Status => {
+            let own = remote::managing_device(core).map_err(text)?;
+            println!(
+                "Dieses Gerät: {}",
+                if own.is_some() { "wird aus der Ferne verwaltet" } else { "nur lokal verwaltet" }
+            );
+            for device in remote::devices(core).map_err(text)? {
+                let seen = if device.seen_ms == 0 {
+                    "nie".to_string()
+                } else {
+                    let ago = tephra_mcp::policy::now_ms().saturating_sub(device.seen_ms) / 60_000;
+                    format!("vor {ago} min")
+                };
+                println!(
+                    "  {}{}: {}, {} Client(s), zuletzt gesehen {seen}, Version {}",
+                    ui::printable(&device.name, 60),
+                    if device.this_device { " (dieses Gerät)" } else { "" },
+                    if device.enabled { "eingeschaltet" } else { "Not-Aus" },
+                    device.clients,
+                    ui::printable(&device.version, 20),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn device_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -891,6 +958,9 @@ async fn sync(path: &Path, command: SyncCommand) -> Fallible {
 }
 
 fn mcp(core: &Core, command: McpCommand) -> Fallible {
+    if let McpCommand::Remote(command) = command {
+        return mcp_remote(core, command);
+    }
     let mut policy = McpPolicy::load(core).map_err(text)?;
     let client_id = |policy: &McpPolicy, name: &str| {
         policy
@@ -901,7 +971,7 @@ fn mcp(core: &Core, command: McpCommand) -> Fallible {
             .ok_or_else(|| format!("MCP-Client „{name}“ nicht gefunden."))
     };
     match command {
-        McpCommand::Serve { .. } => {}
+        McpCommand::Serve { .. } | McpCommand::Remote(_) => {}
         McpCommand::AddClient { name } => {
             if client_id(&policy, &name).is_ok() {
                 return Err(format!("MCP-Client „{name}“ gibt es bereits."));

@@ -161,7 +161,7 @@ Hosts gefunden hat.
 **Vorhanden:**
 
 - Ohne Freigabe ist nichts erlaubt. Freigaben gelten je MCP-Client und je Host, liegen nur auf diesem Gerät und werden
-  nie abgeglichen. Ein Host, der einem Client nicht freigegeben ist, verhält sich genau wie einer, den es nicht gibt;
+  nie abgeglichen – außer das Gerät hat selbst der Fernverwaltung zugestimmt (siehe unten). Ein Host, der einem Client nicht freigegeben ist, verhält sich genau wie einer, den es nicht gibt;
   der Versuch wird protokolliert.
 - Kein Werkzeug gibt je Zugangsdaten zurück.
 - `read-only`: eine feste Liste anzeigender Programme, jedes mit einer festen Liste von Optionen, die nichts
@@ -190,8 +190,16 @@ Hosts gefunden hat.
   übertragen. Ein Programm, das nur den Namen des Kanals besetzt, erfährt nichts Verwertbares und bekommt keine
   MCP-Daten.
 
+- **Fernverwaltung nur mit Zustimmung.** Die Zustimmung (`tephra mcp remote on`) liegt als lokales Geheimnis auf dem
+  Gerät; kein anderes Gerät kann sie erteilen. Fehlt der abgeglichene Eintrag eines fernverwalteten Geräts, ist dort
+  nichts erlaubt. Rückfragen und Antworten reisen wie alles andere Ende-zu-Ende-verschlüsselt über den Sync-Server.
+
 **Nicht geschützt:**
 
+- **Fernverwaltung heißt: Der Tresor entscheidet.** Auf einem Gerät mit Fernverwaltung kann jeder, der deinen Tresor
+  öffnen kann – mit dem Master-Passwort oder auf einem deiner entsperrten Geräte –, LLM-Zugriff freischalten und
+  Rückfragen bejahen. Das Gerät kann nicht unterscheiden, auf welchem Gerät eine Änderung entstand. Schalte sie nur
+  dort ein, wo du das willst.
 - **`auto` ist keine Sandbox.** Eine Sperrliste fängt ein `rm -rf /` ab, das auf die naheliegende Art getippt wird,
   und nichts, das an ihr vorbei soll. In einer interaktiven Sitzung wird sie zeilenweise geprüft und lässt sich schon
   durch Aufteilen einer Eingabe umgehen. Sie verhindert Versehen, keinen Missbrauch.

@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] – 2026-11-26
+
+### Added
+
+- **MCP remote management:** a device running `tephra daemon` – for example a Docker container without a screen – can
+  agree once with `tephra mcp remote on` to have its MCP access managed from elsewhere. Its rules (kill switch,
+  clients, hosts with access level and file rights, limits) then live in a synced entry of the vault, and any device
+  with the vault edits them: in the app under **MCP → Other devices**, now also on the phone. New clients and their
+  tokens are created there. Without consent on the device nothing changes: rules stay local and are never synced.
+  `tephra mcp remote status` lists the devices, `tephra mcp remote off` withdraws the consent; removing a device in
+  the app locks it until it agrees again.
+- **Confirming on another device:** a remotely managed device sends its questions for the level "Confirm each" through
+  the sync server to your other devices; the app shows them as the usual dialog with the name of the device, and the
+  first answer counts (two minutes, then refused). Devices without a terminal can therefore use "Confirm each" now.
+  On the phone questions arrive while the app is open or kept awake by open sessions.
+
+### Changed
+
+- The MCP section of the app is shown on the phone as well; with six sections the bottom bar labels only the selected
+  one.
+
 ## [0.10.0] – 2026-11-26
 
 ### Added

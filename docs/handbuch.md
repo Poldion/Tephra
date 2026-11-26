@@ -461,6 +461,34 @@ Pfad des Tresors, beide müssen also denselben verwenden.
 **5. Prüfen.** Das Modell sollte jetzt das Werkzeug `list_hosts` und die freigegebenen Hosts sehen. `tephra mcp audit`
 zeigt, was es getan hat.
 
+### Fernverwaltung (etwa ein Container ohne Bildschirm)
+
+Läuft `tephra daemon` auf einem Gerät ohne Bildschirm – einem Server oder einem Docker-Container –, gibt es dort niemanden,
+der Rückfragen beantwortet. Mit der Fernverwaltung stellst du die Freigaben dieses Geräts auf einem anderen ein, etwa am
+Telefon, und beantwortest dort auch seine Rückfragen („Mit Bestätigung“).
+
+```bash
+tephra mcp remote on --name "Container"     # einmal auf dem Gerät selbst
+tephra mcp remote status                     # zeigt alle fernverwalteten Geräte des Tresors
+tephra mcp remote off                        # Zustimmung zurücknehmen
+```
+
+- **Nur mit Zustimmung des Geräts.** Ohne `remote on` auf dem Gerät selbst bleibt alles wie oben: Freigaben gelten nur
+  dort und werden nie abgeglichen. Kein anderes Gerät kann die Fernverwaltung einschalten.
+- Mit Zustimmung liegen die Freigaben des Geräts (Not-Aus, Clients, Hosts mit Stufe und Dateirechten, Grenzen) in einem
+  abgeglichenen Eintrag des Tresors. In der App erscheint das Gerät unter **MCP → Andere Geräte** – auch auf dem
+  Telefon – und lässt sich dort genauso bearbeiten wie die eigenen Freigaben. Neue Clients legst du dort an; das Token
+  erscheint einmal und gehört in den MCP-Client auf dem Gerät.
+- Änderungen gelten auf dem Gerät, sobald es abgeglichen hat, mit `tephra daemon` binnen weniger Sekunden. Laufende
+  Sitzungen eines Clients, dem du die Freigabe entziehst, enden dort.
+- **Rückfragen** des Geräts erscheinen in der App als derselbe Dialog wie die des eigenen Dienstes, mit dem Namen des
+  Geräts. Die erste Antwort gilt; ohne Antwort binnen zwei Minuten wird abgelehnt. Hat das Gerät ein Terminal, fragt
+  es zusätzlich dort. Am Telefon kommt eine Rückfrage nur an, solange die App geöffnet ist oder offene Sitzungen sie
+  im Hintergrund wach halten.
+- **Entfernen** (in der App) nimmt das Gerät aus der Verwaltung; dort ist danach nichts mehr erlaubt, bis es selbst
+  erneut zustimmt. `remote off` auf dem Gerät holt die Freigaben wieder dorthin zurück.
+- Voraussetzung: Das Gerät gleicht mit deinem Sync-Server ab (`tephra sync join`), und `tephra daemon` läuft.
+
 ### Zugriffsstufen
 
 | Stufe | Befehle | Interaktive Sitzungen | Dateien |

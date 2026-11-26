@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../device_unlock.dart';
-import '../mcp.dart';
 import '../rust/api/app.dart';
 import '../settings.dart';
 import '../state.dart';
@@ -48,7 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _Section(Icons.badge_outlined, Icons.badge_rounded, t('Identitäten', 'Identities')),
     _Section(Icons.key_outlined, Icons.key_rounded, t('Schlüssel', 'Keys')),
     _Section(Icons.vpn_lock_outlined, Icons.vpn_lock_rounded, 'VPN'),
-    if (mcpState.supported) _Section(Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'MCP'),
+    // Auch auf dem Telefon: Dort verwaltet man die Freigaben fernverwalteter Geräte.
+    _Section(Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'MCP'),
   ];
 
   @override
@@ -249,6 +249,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _body(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
+        // Sechs Beschriftungen passen auf ein schmales Telefon nicht nebeneinander.
+        labelBehavior: _sections.length > 5
+            ? NavigationDestinationLabelBehavior.onlyShowSelected
+            : NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (index) => setState(() => _index = index),
         destinations: [
           for (final (index, section) in _sections.indexed)

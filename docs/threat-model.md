@@ -151,8 +151,8 @@ The model is treated as untrusted: it may be wrong, or it may follow instruction
 
 **In place:**
 
-- Nothing is shared by default. Grants are per MCP client and per host, stored on this device only and never synced.
-  A host that is not shared with a client behaves exactly like a host that does not exist; the attempt is logged.
+- Nothing is shared by default. Grants are per MCP client and per host, stored on this device only and never synced –
+  unless the device itself agreed to remote management (see below). A host that is not shared with a client behaves exactly like a host that does not exist; the attempt is logged.
 - Credentials are never returned by any tool.
 - `read-only`: a fixed list of inspecting programs, each with a fixed list of options that change nothing, start
   nothing and do not run forever. A command is split into words and checked word by word. Refused are chaining,
@@ -177,8 +177,15 @@ The model is treated as untrusted: it may be wrong, or it may follow instruction
 - **Bridge and daemon** prove to each other that they know the client's token; the token itself is not sent. A
   program that merely occupies the name of the channel learns nothing it could use and gets no MCP data.
 
+- **Remote management only with consent.** The consent (`tephra mcp remote on`) is a local secret on the device; no
+  other device can grant it. If the synced entry of a remotely managed device is missing, nothing is allowed there.
+  Questions and answers travel end-to-end encrypted through the sync server like everything else.
+
 **Not protected:**
 
+- **Remote management means: the vault decides.** On a device with remote management anyone who can open your vault –
+  with the master password or on one of your unlocked devices – can grant LLM access and approve questions. The device
+  cannot tell on which device a change was made. Switch it on only where you want that.
 - **`auto` is not a sandbox.** A deny list catches `rm -rf /` typed in the obvious way and nothing that is meant to
   get past it. In an interactive session it is checked line by line and is defeated by simply splitting an input in
   two. It prevents accidents, not misuse.

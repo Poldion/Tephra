@@ -60,6 +60,10 @@ pub enum ItemKind {
     KnownHost,
     Snippet,
     Settings,
+    /// MCP-Freigaben eines Geräts, das sich aus der Ferne verwalten lässt.
+    McpDevice,
+    /// Rückfrage eines solchen Geräts, die auf einem anderen beantwortet wird.
+    McpApproval,
 }
 
 impl ItemKind {
@@ -73,6 +77,8 @@ impl ItemKind {
             ItemKind::KnownHost => "known_host",
             ItemKind::Snippet => "snippet",
             ItemKind::Settings => "settings",
+            ItemKind::McpDevice => "mcp_device",
+            ItemKind::McpApproval => "mcp_approval",
         }
     }
 }
