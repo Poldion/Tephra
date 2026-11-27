@@ -827,3 +827,52 @@ async fn ohne_https_beim_server_bleibt_http_eine_ausdrueckliche_wahl() {
     let connection = a.connection().expect("lesen").expect("da");
     assert!(!connection.encrypted && connection.fingerprint.is_none());
 }
+
+#[tokio::test]
+async fn adresse_desselben_servers_aendern() {
+    let (server, https, fingerprint) = tls_server(true).await;
+    let (core, _) = Core::create(&server.dir.path().join("a.tephra"), PASSWORD, KDF).expect("tresor");
+    let a = Sync::new(core);
+    a.register(&https, "anna", PASSWORD, "Laptop", None, false).await.expect("registrieren");
+    // Derselbe Server unter anderem Namen: 127.0.0.2 ist auch als „localhost.localdomain“ … hier: als http-Adresse.
+    let other = https.replace("https://", "http://");
+    a.change_server(&other, false).await.expect("umstellen");
+    let connection = a.connection().expect("lesen").expect("da");
+    assert_eq!(connection.server, https, "über https, wie zuvor");
+    assert_eq!(connection.fingerprint.as_deref(), Some(fingerprint.as_str()));
+
+    // Ein anderer Server mit anderem Zertifikat wird nicht übernommen; die alte Adresse bleibt.
+    let (_, foreign, _) = tls_server(true).await;
+    assert!(matches!(a.change_server(&foreign, false).await, Err(SyncError::CertificateChanged)));
+    assert_eq!(a.connection().expect("lesen").expect("da").server, https);
+    // Eine Adresse, unter der niemand antwortet, ebenso nicht.
+    assert!(a.change_server("https://127.0.0.2:1", false).await.is_err());
+    assert_eq!(a.connection().expect("lesen").expect("da").server, https);
+    a.sync_once().await.expect("abgleich");
+}
+
+#[tokio::test]
+async fn getrenntes_geraet_wieder_verbinden() {
+    let server = server().await;
+    let a = first_device(&server).await;
+    a.core.with_vault(|v| v.insert(&host("web"))).expect("insert");
+    a.sync_once().await.expect("abgleich");
+    let b = join(&server, "b.tephra", "Handy").await;
+    b.disconnect().await.expect("trennen");
+    // Während b getrennt ist, ändern beide etwas.
+    b.core.with_vault(|v| v.insert(&host("nur-handy"))).expect("insert");
+    a.core.with_vault(|v| v.insert(&host("nur-laptop"))).expect("insert");
+    a.sync_once().await.expect("abgleich");
+
+    assert!(b.attach(&server.url, "anna", "falsch", "Handy", false).await.is_err());
+    b.attach(&server.url, "anna", PASSWORD, "Handy", false).await.expect("wieder verbinden");
+    assert_eq!(labels(&b), vec!["nur-handy", "nur-laptop", "web"]);
+    a.sync_once().await.expect("abgleich");
+    assert_eq!(labels(&a), vec!["nur-handy", "nur-laptop", "web"]);
+    assert!(matches!(b.attach(&server.url, "anna", PASSWORD, "Handy", false).await, Err(SyncError::AlreadyConnected)));
+
+    // Ein fremder Tresor lässt sich nicht an dieses Konto hängen.
+    let (core, _) = Core::create(&server.dir.path().join("fremd.tephra"), PASSWORD, KDF).expect("tresor");
+    let stranger = Sync::new(core);
+    assert!(matches!(stranger.attach(&server.url, "anna", PASSWORD, "Fremd", false).await, Err(SyncError::OtherVault)));
+}

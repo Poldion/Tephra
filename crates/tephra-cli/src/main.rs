@@ -229,6 +229,21 @@ enum SyncCommand {
     },
     /// Meldet dieses Gerät neu an (abgelaufene Sitzung, geändertes Passwort).
     Reconnect,
+    /// Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto (etwa nach „disconnect“).
+    Attach {
+        server: String,
+        username: String,
+        /// Erlaubt eine unverschlüsselte http-Adresse – nur für einen Server im eigenen Netz ohne HTTPS.
+        #[arg(long)]
+        allow_http: bool,
+    },
+    /// Stellt auf eine neue Adresse desselben Servers um; er muss sich mit demselben Fingerabdruck ausweisen.
+    SetServer {
+        server: String,
+        /// Erlaubt eine unverschlüsselte http-Adresse – nur für einen Server im eigenen Netz ohne HTTPS.
+        #[arg(long)]
+        allow_http: bool,
+    },
     /// Gleicht jetzt einmal ab.
     Now,
     /// Zeigt, mit welchem Server und Konto dieses Gerät verbunden ist.
@@ -919,6 +934,18 @@ async fn sync(path: &Path, command: SyncCommand) -> Fallible {
             let report = sync.sync_once().await.map_err(text)?;
             let noun = if report.pushed == 1 { "Datensatz" } else { "Datensätze" };
             println!("Konto „{username}“ angelegt, {} {noun} hochgeladen.", report.pushed);
+        }
+        SyncCommand::Attach { server, username, allow_http } => {
+            let report = sync.attach(&server, &username, &master, &device_name(), allow_http).await.map_err(text)?;
+            println!(
+                "Wieder mit „{username}“ verbunden: {} geholt, {} gesendet, {} zusammengeführt.",
+                report.pulled, report.pushed, report.merged
+            );
+        }
+        SyncCommand::SetServer { server, allow_http } => {
+            sync.change_server(&server, allow_http).await.map_err(text)?;
+            let connection = sync.connection().map_err(text)?.ok_or("Nicht verbunden.")?;
+            println!("Umgestellt auf {}.", connection.server);
         }
         SyncCommand::Reconnect => {
             sync.reconnect(&password("Aktuelles Master-Passwort des Kontos").await?, &device_name())

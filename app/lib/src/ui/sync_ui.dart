@@ -119,6 +119,9 @@ class _SyncDialogState extends State<SyncDialog> {
   String? _error;
   Future<List<SyncDevice>>? _devices;
 
+  /// Ob ein bestehendes Konto verbunden wird (statt ein neues anzulegen).
+  bool _existing = false;
+
   @override
   void initState() {
     super.initState();
@@ -184,6 +187,103 @@ class _SyncDialogState extends State<SyncDialog> {
       context,
       t('Konto angelegt, $count Datensätze hochgeladen.', 'Account created, $count records uploaded.'),
     );
+  }
+
+  /// Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto.
+  Future<void> _attach() async {
+    if (_server.text.trim().isEmpty || _username.text.trim().isEmpty || _password.text.isEmpty) {
+      setState(
+        () => _error = t(
+          'Serveradresse, Benutzername und Master-Passwort werden gebraucht.',
+          'Server address, username and master password are required.',
+        ),
+      );
+      return;
+    }
+    SyncSummary? summary;
+    final ok = await _run(() async {
+      summary = await syncState.attach(
+        server: _server.text,
+        username: _username.text,
+        password: _password.text,
+        allowHttp: _allowHttp,
+      );
+    });
+    if (!ok || !mounted) return;
+    _password.clear();
+    setState(() {
+      _devices = syncState.devices();
+    });
+    showMessage(
+      context,
+      t(
+        'Wieder verbunden: ${summary?.pulled ?? 0} geholt, ${summary?.pushed ?? 0} gesendet.',
+        'Connected again: ${summary?.pulled ?? 0} fetched, ${summary?.pushed ?? 0} sent.',
+      ),
+    );
+  }
+
+  /// Stellt auf eine neue Adresse desselben Servers um.
+  Future<void> _changeServer(SyncConnection connection) async {
+    final field = TextEditingController(text: connection.server);
+    var allowHttp = false;
+    try {
+      final address = await showDialog<String>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setLocal) => AlertDialog(
+            title: Text(t('Serveradresse ändern', 'Change server address')),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    t(
+                      'Für denselben Server unter einer neuen Adresse, etwa nach einer Änderung im Netz. Er muss sich dort mit demselben Fingerabdruck ausweisen; die Anmeldung bleibt.',
+                      'For the same server under a new address, for example after a change in the network. It must identify itself there with the same fingerprint; you stay signed in.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('sync-new-server'),
+                    controller: field,
+                    autofocus: true,
+                    autocorrect: false,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(labelText: t('Neue Adresse', 'New address')),
+                  ),
+                  PlainHttpConsent(
+                    server: field,
+                    value: allowHttp,
+                    onChanged: (value) => setLocal(() => allowHttp = value),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(t('Abbrechen', 'Cancel'))),
+              FilledButton(
+                key: const Key('sync-new-server-save'),
+                onPressed: () => Navigator.pop(context, field.text),
+                child: Text(t('Umstellen', 'Switch')),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (address == null || address.trim().isEmpty || !mounted) return;
+      final ok = await _run(() => syncState.changeServer(address, allowHttp: allowHttp));
+      if (ok && mounted) {
+        showMessage(context, t('Umgestellt.', 'Switched.'));
+        setState(() {
+          _devices = syncState.devices();
+        });
+      }
+    } finally {
+      field.dispose();
+    }
   }
 
   Future<void> _reconnect() async {
@@ -306,7 +406,13 @@ class _SyncDialogState extends State<SyncDialog> {
                 child: Text(t('Trennen', 'Disconnect')),
               ),
             TextButton(onPressed: () => Navigator.pop(context), child: Text(t('Schließen', 'Close'))),
-            if (connection == null)
+            if (connection == null && _existing)
+              FilledButton(
+                key: const Key('sync-attach'),
+                onPressed: _busy ? null : _attach,
+                child: Text(t('Verbinden', 'Connect')),
+              )
+            else if (connection == null)
               FilledButton(
                 key: const Key('sync-register'),
                 onPressed: _busy ? null : _register,
@@ -334,6 +440,16 @@ class _SyncDialogState extends State<SyncDialog> {
         ),
         style: muted,
       ),
+      const SizedBox(height: 12),
+      SegmentedButton<bool>(
+        key: const Key('sync-mode'),
+        segments: [
+          ButtonSegment(value: false, label: Text(t('Neues Konto', 'New account'))),
+          ButtonSegment(value: true, label: Text(t('Bestehendes Konto', 'Existing account'))),
+        ],
+        selected: {_existing},
+        onSelectionChanged: _busy ? null : (value) => setState(() => _existing = value.first),
+      ),
       const SizedBox(height: 16),
       TextField(
         key: const Key('sync-server'),
@@ -360,38 +476,50 @@ class _SyncDialogState extends State<SyncDialog> {
         autocorrect: false,
         decoration: InputDecoration(labelText: t('Benutzername', 'Username')),
       ),
-      const SizedBox(height: 14),
-      TextField(
-        key: const Key('sync-invite'),
-        controller: _invite,
-        enabled: !_busy,
-        autocorrect: false,
-        decoration: InputDecoration(
-          labelText: t('Einladungscode', 'Invite code'),
-          helperText: t(
-            'Vom Betreiber des Servers. Bei offener Registrierung leer lassen.',
-            'From whoever runs the server. Leave empty if registration is open.',
+      if (!_existing) ...[
+        const SizedBox(height: 14),
+        TextField(
+          key: const Key('sync-invite'),
+          controller: _invite,
+          enabled: !_busy,
+          autocorrect: false,
+          decoration: InputDecoration(
+            labelText: t('Einladungscode', 'Invite code'),
+            helperText: t(
+              'Vom Betreiber des Servers. Bei offener Registrierung leer lassen.',
+              'From whoever runs the server. Leave empty if registration is open.',
+            ),
           ),
         ),
-      ),
+      ],
       const SizedBox(height: 14),
       SecretField(
         key: const Key('sync-password'),
         controller: _password,
         label: t('Master-Passwort', 'Master password'),
-        helper: t(
-          'Das Master-Passwort dieses Tresors. Es wird auch das Passwort des Kontos; an den Server geht nur ein daraus abgeleiteter Nachweis.',
-          'The master password of this vault. It becomes the password of the account too; the server only receives a proof derived from it.',
-        ),
+        helper: _existing
+            ? t(
+                'Das aktuelle Master-Passwort des Kontos. Auf dem Server muss derselbe Tresor liegen wie hier.',
+                'The current master password of the account. The server must hold the same vault as this device.',
+              )
+            : t(
+                'Das Master-Passwort dieses Tresors. Es wird auch das Passwort des Kontos; an den Server geht nur ein daraus abgeleiteter Nachweis.',
+                'The master password of this vault. It becomes the password of the account too; the server only receives a proof derived from it.',
+              ),
         enabled: !_busy,
-        onSubmitted: (_) => _register(),
+        onSubmitted: (_) => _existing ? _attach() : _register(),
       ),
       const SizedBox(height: 16),
       Text(
-        t(
-          'Das Konto gibt es schon? Ein weiteres Gerät holt den Tresor ab, solange es selbst noch keinen hat: dort beim ersten Start „Vorhandenen Tresor abholen“ wählen.',
-          'The account already exists? Another device fetches the vault as long as it has none of its own: choose "Fetch an existing vault" there on first start.',
-        ),
+        _existing
+            ? t(
+                '„Bestehendes Konto“ verbindet den Tresor dieses Geräts wieder mit seinem Konto, etwa nach dem Trennen. Ein Gerät ohne Tresor wählt beim ersten Start „Vorhandenen Tresor abholen“.',
+                '"Existing account" connects the vault of this device to its account again, for example after disconnecting. A device without a vault chooses "Fetch an existing vault" on first start.',
+              )
+            : t(
+                'Das Konto gibt es schon? Dann „Bestehendes Konto“ wählen.',
+                'The account already exists? Then choose "Existing account".',
+              ),
         style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
       ),
     ];
@@ -436,7 +564,18 @@ class _SyncDialogState extends State<SyncDialog> {
     final muted = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final lastSync = syncState.lastSync;
     return [
-      Text(connection.server, key: const Key('sync-connected'), style: theme.textTheme.titleMedium),
+      Row(
+        children: [
+          Expanded(
+            child: Text(connection.server, key: const Key('sync-connected'), style: theme.textTheme.titleMedium),
+          ),
+          TextButton(
+            key: const Key('sync-change-server'),
+            onPressed: _busy ? null : () => _changeServer(connection),
+            child: Text(t('Adresse ändern', 'Change address')),
+          ),
+        ],
+      ),
       const SizedBox(height: 2),
       Text(t('Angemeldet als ${connection.username}', 'Signed in as ${connection.username}'), style: muted),
       if (syncIsUnencrypted(server: connection.server))

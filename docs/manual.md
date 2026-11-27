@@ -341,6 +341,9 @@ asks for the master password of the account, creates the vault and fetches every
 | `tephra sync devices` | Lists the devices of the account with their IDs |
 | `tephra sync remove-device <id>` | Removes a device from the account |
 | `tephra sync reconnect` | Logs this device in again (expired session, changed password) |
+| `tephra sync set-server <address>` | Switches to a new address of the same server (it must show the same fingerprint); in the app "Change address" |
+| `tephra sync attach <server> <user>` | Connects the vault of this device to its existing account again, for example after `disconnect`; in the app "Existing account" |
+| `tephra sync trust` | Accepts a new fingerprint of the server after asking |
 | `tephra sync disconnect` | Disconnects this device from the server; the local vault stays |
 
 `tephra sync now` syncs once. For continuous sync leave `tephra daemon` running: it uploads local changes within seconds
@@ -381,6 +384,9 @@ Good to know:
 - **Records the server would refuse as too large** are skipped and reported by `tephra sync now`; everything else is
   synced. A record dated more than 24 hours in the future is not accepted from the server – check the clocks of your
   devices if records are reported as unreadable.
+- **Deleting the vault from a device** is done in the app under "About Tephra" with the master password. The app then
+  starts as on first launch; "Fetch an existing vault" brings it back from the sync server. Only what was solely on
+  this device is lost. With the command line, simply delete the vault file.
 - **A device that has not synced for 60 days** is logged out; `tephra sync reconnect` logs it in again.
 - **Removing a device** stops its sync at once. What it has already fetched stays readable there – if the device was
   lost, renew the passwords and keys of your hosts.

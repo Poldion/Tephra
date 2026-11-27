@@ -10,6 +10,7 @@ import 'hosts_page.dart';
 import 'identities_page.dart';
 import 'keys_page.dart';
 import 'common.dart';
+import 'delete_vault_ui.dart';
 import 'device_unlock_ui.dart';
 import 'logo.dart';
 import 'mcp_ui.dart';
@@ -20,10 +21,13 @@ import 'vpn_page.dart';
 
 /// Die App nach dem Entsperren: Navigation und die einzelnen Bereiche.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.state, required this.onLock});
+  const HomeScreen({super.key, required this.state, required this.onLock, required this.onDeleteVault});
 
   final AppState state;
   final Future<void> Function() onLock;
+
+  /// Löscht den Tresor von diesem Gerät (Passwort schon geprüft).
+  final Future<void> Function(String password) onDeleteVault;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -135,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const UpdateSection(),
         if (deviceUnlock.supported) const DeviceUnlockSection(),
+        DeleteVaultSection(onDelete: widget.onDeleteVault),
       ],
     );
   }

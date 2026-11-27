@@ -354,6 +354,9 @@ fragt nach dem Master-Passwort des Kontos, legt den Tresor an und holt alles ab.
 | `tephra sync devices` | Listet die Geräte des Kontos mit ihren Kennungen |
 | `tephra sync remove-device <kennung>` | Entfernt ein Gerät vom Konto |
 | `tephra sync reconnect` | Meldet dieses Gerät neu an (abgelaufene Sitzung, geändertes Passwort) |
+| `tephra sync set-server <adresse>` | Stellt auf eine neue Adresse desselben Servers um (er muss denselben Fingerabdruck zeigen); in der App „Adresse ändern“ |
+| `tephra sync attach <server> <benutzer>` | Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto, etwa nach `disconnect`; in der App „Bestehendes Konto“ |
+| `tephra sync trust` | Übernimmt nach Rückfrage einen neuen Fingerabdruck des Servers |
 | `tephra sync disconnect` | Trennt dieses Gerät vom Server; der lokale Tresor bleibt |
 
 `tephra sync now` gleicht einmal ab. Für fortlaufenden Abgleich lässt du `tephra daemon` laufen: Er lädt lokale
@@ -397,6 +400,9 @@ Gut zu wissen:
 - **Datensätze, die der Server als zu groß ablehnen würde,** werden übersprungen und von `tephra sync now` gemeldet;
   alles andere wird abgeglichen. Ein Datensatz, der mehr als 24 Stunden in der Zukunft datiert ist, wird vom Server
   nicht übernommen – prüfe die Uhren deiner Geräte, wenn Datensätze als unlesbar gemeldet werden.
+- **Den Tresor von einem Gerät löschen** geht in der App unter „Über Tephra“ mit dem Master-Passwort. Danach beginnt
+  die App wie beim ersten Start; mit „Vorhandenen Tresor abholen“ kommt er vom Sync-Server zurück. Verloren geht nur,
+  was ausschließlich auf diesem Gerät lag. Mit der Kommandozeile löschst du einfach die Tresordatei.
 - **Ein Gerät, das 60 Tage nicht abgeglichen hat,** wird abgemeldet; `tephra sync reconnect` meldet es neu an.
 - **Ein Gerät entfernen** beendet seinen Abgleich sofort. Was es bereits abgeholt hat, bleibt dort lesbar – ging das
   Gerät verloren, erneuere die Passwörter und Schlüssel deiner Hosts.

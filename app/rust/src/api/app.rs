@@ -90,6 +90,34 @@ pub async fn unlock_vault(path: String, password: String) -> Result<()> {
     Ok(())
 }
 
+/// Ob das Master-Passwort zum offenen Tresor passt – vor Schritten, die sich nicht rückgängig machen lassen.
+#[frb(sync)]
+pub fn verify_master_password(password: String) -> Result<bool> {
+    let header = core()?.with_vault(|v| Ok(v.header().clone()))?;
+    Ok(header.open_with_password(&password).is_ok())
+}
+
+/// Löscht den Tresor von diesem Gerät: sperrt ihn, beendet alle Verbindungen und entfernt die Tresordatei samt
+/// Begleitdateien. Was auf einem Sync-Server liegt, bleibt dort; was nur hier lag, ist weg.
+pub async fn delete_vault(path: String, password: String) -> Result<()> {
+    if !verify_master_password(password)? {
+        bail!("Das Master-Passwort stimmt nicht");
+    }
+    lock_vault().await?;
+    app().core = None;
+    let path = PathBuf::from(path);
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    for suffix in ["", "-wal", "-shm", "-journal", ".device-unlock"] {
+        let file = path.with_file_name(format!("{name}{suffix}"));
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(anyhow!("{} lässt sich nicht löschen: {error}", file.display())),
+        }
+    }
+    Ok(())
+}
+
 /// Sperrt den Tresor und beendet alle Verbindungen.
 pub async fn lock_vault() -> Result<()> {
     let core = {

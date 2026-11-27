@@ -52,6 +52,31 @@ Future<SyncSummary> syncRegister({
   allowHttp: allowHttp,
 );
 
+/// Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto (etwa nach dem Trennen). Auf dem
+/// Server muss derselbe Tresor liegen.
+Future<SyncSummary> syncAttach({
+  required String server,
+  required String username,
+  required String password,
+  required String deviceName,
+  required bool allowHttp,
+}) => RustLib.instance.api.crateApiSyncSyncAttach(
+  server: server,
+  username: username,
+  password: password,
+  deviceName: deviceName,
+  allowHttp: allowHttp,
+);
+
+/// Stellt auf eine neue Adresse desselben Servers um; er muss sich mit demselben Fingerabdruck ausweisen.
+Future<void> syncChangeServer({
+  required String server,
+  required bool allowHttp,
+}) => RustLib.instance.api.crateApiSyncSyncChangeServer(
+  server: server,
+  allowHttp: allowHttp,
+);
+
 /// Richtet dieses Gerät für ein bestehendes Konto ein: legt unter `path` den
 /// Tresor des Kontos an, holt alles ab und lässt ihn entsperrt.
 Future<void> syncJoin({

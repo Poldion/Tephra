@@ -56,6 +56,10 @@ pub enum SyncError {
         "Der Sync-Server weist sich mit einem anderen Zertifikat aus als bisher. Wurde er neu eingerichtet, übernimm den neuen Fingerabdruck (Kommandozeile: „tephra sync trust“, App: im Dialog des Abgleichs); sonst nicht verbinden – jemand könnte sich dazwischengeschaltet haben"
     )]
     CertificateChanged,
+    #[error(
+        "Auf dem Server liegt ein anderer Tresor als auf diesem Gerät. Hol ihn auf einem Gerät ohne Tresor ab oder lösche den Tresor hier zuerst"
+    )]
+    OtherVault,
     #[error(transparent)]
     Core(#[from] CoreError),
 }
@@ -275,6 +279,38 @@ fn is_unauthorized(error: &SyncError) -> bool {
     matches!(error, SyncError::Server { code, .. } if code == codes::UNAUTHORIZED)
 }
 
+/// Meldet sich mit dem Master-Passwort an: Parameter erfragen, Nachweis ableiten, anmelden.
+async fn login(
+    http: &reqwest::Client,
+    server: &str,
+    username: &str,
+    password: &str,
+    device_name: &str,
+) -> Result<LoginResponse> {
+    let prelogin: PreloginResponse = parse(
+        http.post(format!("{server}/v1/auth/prelogin"))
+            .json(&PreloginRequest { username: username.to_string() })
+            .send()
+            .await,
+    )
+    .await?;
+    // Der Server nennt die Passwortparameter, bevor er sich ausgewiesen hat. Zu schwache Parameter würden den
+    // Anmeldenachweis angreifbar machen und werden deshalb gar nicht erst verwendet.
+    tephra_vault::check_kdf(prelogin.kdf)?;
+    let auth_key = MasterKey::derive(password, &prelogin.salt.0, prelogin.kdf).map_err(VaultError::from)?.auth_key();
+    parse(
+        http.post(format!("{server}/v1/auth/login"))
+            .json(&LoginRequest {
+                username: username.to_string(),
+                auth_key: Bytes(auth_key.as_bytes().to_vec()),
+                device_name: device_name.to_string(),
+            })
+            .send()
+            .await,
+    )
+    .await
+}
+
 fn header_from_bytes(bytes: &[u8]) -> Result<VaultHeader> {
     serde_json::from_slice(bytes).map_err(|e| SyncError::Protocol(format!("Kopf des Tresors ist unlesbar: {e}")))
 }
@@ -414,6 +450,73 @@ impl Sync {
             header_rev: 1,
             pin,
         })
+    }
+
+    /// Stellt dieses Gerät auf eine neue Adresse desselben Servers um, etwa nach einer Änderung im Netz. Die
+    /// Sitzung bleibt; unter der neuen Adresse muss sich der Server mit demselben Fingerabdruck ausweisen (oder mit
+    /// einem Zertifikat, für das eine anerkannte Stelle bürgt). Klappt eine Anfrage dort nicht, bleibt alles beim Alten.
+    pub async fn change_server(&self, server: &str, allow_http: bool) -> Result<()> {
+        let stored = self.require()?;
+        let (address, pin) = establish(&self.http, server, allow_http).await?;
+        if let (Some(old), Some(new)) = (&stored.pin, &pin)
+            && old != new
+        {
+            return Err(SyncError::CertificateChanged);
+        }
+        self.store(&Stored { server: address, pin, ..stored.clone() })?;
+        if let Err(error) = self.devices().await {
+            self.store(&stored)?;
+            return Err(error);
+        }
+        *self.probed.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        Ok(())
+    }
+
+    /// Verbindet einen Tresor, den es auf diesem Gerät schon gibt, wieder mit seinem Konto – etwa nachdem das Gerät
+    /// getrennt wurde. Auf dem Server muss derselbe Tresor liegen. Danach wird vollständig abgeglichen; was nur hier
+    /// geändert wurde, geht dabei nicht verloren.
+    pub async fn attach(
+        &self,
+        server: &str,
+        username: &str,
+        password: &str,
+        device_name: &str,
+        allow_http: bool,
+    ) -> Result<SyncReport> {
+        if self.stored()?.is_some() {
+            return Err(SyncError::AlreadyConnected);
+        }
+        let (server, pin) = establish(&self.http, server, allow_http).await?;
+        let http = match pin.as_deref().and_then(pin::from_text) {
+            Some(pin) => pin::client(Some(pin), Duration::from_secs(60)).0,
+            None => self.http.clone(),
+        };
+        let username = username.trim().to_string();
+        let login = login(&http, &server, &username, password, device_name).await?;
+        let header = header_from_bytes(&login.header.0)?;
+        let local = self.core.with_vault(|v| Ok(v.header().clone()))?;
+        if header.vault_id != local.vault_id {
+            return Err(SyncError::OtherVault);
+        }
+        // Prüft das Passwort und, dass der Kopf echt ist.
+        header.open_with_password(password)?;
+        // Wurde das Passwort inzwischen auf einem anderen Gerät geändert, gilt der neuere Kopf.
+        if header.generation > local.generation {
+            self.core.with_vault(|v| v.replace_header(header))?;
+        }
+        self.store(&Stored {
+            server,
+            username,
+            account_id: login.session.account_id,
+            device_id: login.session.device_id,
+            access_token: login.session.access_token,
+            refresh_token: login.session.refresh_token,
+            header_rev: login.header_rev,
+            pin,
+        })?;
+        // Alles hochladen, was hier liegt; was beide Seiten haben, wird dabei zusammengeführt.
+        self.core.with_vault(|v| v.reset_sync_state())?;
+        self.sync_once().await
     }
 
     /// Richtet ein weiteres Gerät ein: meldet sich am Server an, legt unter

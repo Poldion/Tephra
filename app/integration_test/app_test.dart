@@ -55,6 +55,7 @@ import 'package:tephra/src/rust/api/sync.dart' show syncConnection, syncIsUnencr
 import 'package:tephra/src/rust/frb_generated.dart';
 import 'package:tephra/src/session.dart';
 import 'package:tephra/src/settings.dart';
+import 'package:tephra/src/sync.dart' show syncState;
 import 'package:tephra/src/text.dart';
 import 'package:tephra/src/ui/device_unlock_ui.dart';
 import 'package:tephra/src/ui/terminal_page.dart';
@@ -306,6 +307,63 @@ Future<void> _joinDevice(WidgetTester tester) async {
   await _type(tester, find.byType(TextField).first, _password);
   await _tap(tester, find.widgetWithText(FilledButton, t('Entsperren', 'Unlock')));
   await _appears(tester, find.text('Testserver'));
+}
+
+/// Ein Gerät mit eigenem Tresor: Adresse ändern, trennen, wieder mit dem bestehenden Konto verbinden, den Tresor
+/// löschen und ihn danach wieder abholen.
+Future<void> _syncLifecycle(WidgetTester tester) async {
+  _step('Adresse ändern');
+  await _tap(tester, find.byKey(const Key('sync-button')));
+  await _appears(tester, find.byKey(const Key('sync-connected')));
+  final before = syncConnection()!;
+  // Derselbe Server, anders geschrieben: Die App landet wieder bei https mit demselben Fingerabdruck.
+  await _tap(tester, find.byKey(const Key('sync-change-server')));
+  await _type(tester, find.byKey(const Key('sync-new-server')), _sync);
+  await _tap(tester, find.byKey(const Key('sync-new-server-save')));
+  await _until(
+    tester,
+    () => !syncState.working && find.byKey(const Key('sync-new-server')).evaluate().isEmpty,
+    'umgestellt',
+  );
+  await _until(tester, () => syncConnection()?.server == before.server, 'Adresse');
+  expect(syncConnection()!.fingerprint, before.fingerprint);
+  expect(find.byKey(const Key('sync-error')), findsNothing);
+
+  _step('Trennen und wieder verbinden');
+  await _tap(tester, find.byKey(const Key('sync-disconnect')));
+  await _tap(tester, find.widgetWithText(FilledButton, t('Trennen', 'Disconnect')));
+  await _appears(tester, find.byKey(const Key('sync-mode')));
+  await _tap(tester, find.text(t('Bestehendes Konto', 'Existing account')));
+  expect(find.byKey(const Key('sync-invite')), findsNothing);
+  await _type(tester, find.byKey(const Key('sync-server')), _sync);
+  await _type(tester, find.byKey(const Key('sync-username')), _account);
+  await _type(tester, find.byKey(const Key('sync-password')), _password);
+  await _tap(tester, find.byKey(const Key('sync-attach')));
+  await _syncDone(tester, _sync);
+  await _tap(tester, find.text(t('Schließen', 'Close')));
+
+  _step('Tresor löschen und wieder abholen');
+  await _tap(tester, find.byTooltip(t('Über $appName', 'About $appName')));
+  await _appears(tester, find.byKey(const Key('delete-vault')));
+  await tester.ensureVisible(find.byKey(const Key('delete-vault')));
+  await _tap(tester, find.byKey(const Key('delete-vault')));
+  await _type(tester, find.byKey(const Key('delete-vault-password')), 'falsch');
+  await _tap(tester, find.byKey(const Key('delete-vault-confirm')));
+  await _appears(tester, find.text(t('Das Master-Passwort stimmt nicht.', 'The master password is wrong.')));
+  expect(vaultExists(path: vaultPath), isTrue);
+  await _type(tester, find.byKey(const Key('delete-vault-password')), _password);
+  await _tap(tester, find.byKey(const Key('delete-vault-confirm')));
+  await _appears(tester, find.byKey(const Key('gate-join')));
+  expect(vaultExists(path: vaultPath), isFalse);
+  expect(isUnlocked(), isFalse);
+  await _tap(tester, find.byKey(const Key('gate-join')));
+  await _type(tester, find.byKey(const Key('join-server')), _sync);
+  await _type(tester, find.byKey(const Key('join-username')), _account);
+  await _type(tester, find.byKey(const Key('join-password')), _password);
+  await _tap(tester, find.byKey(const Key('join-submit')));
+  await _appears(tester, find.text('Testserver'));
+  expect(isUnlocked(), isTrue);
+  expect(syncConnection()!.fingerprint, before.fingerprint);
 }
 
 /// Schaltet im Dialog „Über Tephra“ das Entsperren ohne Passwort ein oder aus.
@@ -910,6 +968,7 @@ void main() {
       await _syncDone(tester, _sync);
       await _tap(tester, find.text(t('Schließen', 'Close')));
       if (_cli.isNotEmpty && Platform.isLinux) await _remoteMcp(tester);
+      await _syncLifecycle(tester);
     }
 
     // ---- Aktualisierung: echte Veröffentlichung finden, laden und ihre Prüfsumme prüfen

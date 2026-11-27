@@ -4,7 +4,7 @@ import 'dart:ui';
 const appName = 'Tephra';
 
 /// Version der App; entspricht `version` in `pubspec.yaml`.
-const appVersion = '0.12.0';
+const appVersion = '0.12.1';
 
 /// Ob die Oberfläche deutsch spricht; sonst englisch.
 final bool german = PlatformDispatcher.instance.locale.languageCode == 'de';

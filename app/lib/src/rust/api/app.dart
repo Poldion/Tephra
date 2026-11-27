@@ -27,6 +27,15 @@ Future<String> createVault({required String path, required String password}) =>
 Future<void> unlockVault({required String path, required String password}) =>
     RustLib.instance.api.crateApiAppUnlockVault(path: path, password: password);
 
+/// Ob das Master-Passwort zum offenen Tresor passt – vor Schritten, die sich nicht rückgängig machen lassen.
+bool verifyMasterPassword({required String password}) =>
+    RustLib.instance.api.crateApiAppVerifyMasterPassword(password: password);
+
+/// Löscht den Tresor von diesem Gerät: sperrt ihn, beendet alle Verbindungen und entfernt die Tresordatei samt
+/// Begleitdateien. Was auf einem Sync-Server liegt, bleibt dort; was nur hier lag, ist weg.
+Future<void> deleteVault({required String path, required String password}) =>
+    RustLib.instance.api.crateApiAppDeleteVault(path: path, password: password);
+
 /// Sperrt den Tresor und beendet alle Verbindungen.
 Future<void> lockVault() => RustLib.instance.api.crateApiAppLockVault();
 

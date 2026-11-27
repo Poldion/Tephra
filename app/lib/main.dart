@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'src/device_unlock.dart';
 import 'src/mcp.dart';
 import 'src/paths.dart';
 import 'src/rust/api/app.dart';
@@ -98,6 +99,21 @@ class _RootState extends State<Root> {
     }
   }
 
+  /// Löscht den Tresor von diesem Gerät; danach beginnt die App wie beim ersten Start.
+  Future<void> _deleteVault(String password) async {
+    _startedUp = true;
+    _state.closeAll();
+    syncState.stop();
+    mcpState.stop();
+    // Die Ablage für das Entsperren ohne Passwort gehört zu diesem Tresor.
+    if (deviceUnlock.supported) await deviceUnlock.disable();
+    try {
+      await deleteVault(path: vaultPath, password: password);
+    } finally {
+      if (mounted) setState(() => _unlocked = isUnlocked());
+    }
+  }
+
   @override
   void dispose() {
     _state.closeAll();
@@ -111,7 +127,7 @@ class _RootState extends State<Root> {
       return GateScreen(onUnlocked: _onUnlocked, autoUnlock: !_startedUp);
     }
     return McpApprovals(
-      child: HomeScreen(state: _state, onLock: _lock),
+      child: HomeScreen(state: _state, onLock: _lock, onDeleteVault: _deleteVault),
     );
   }
 }

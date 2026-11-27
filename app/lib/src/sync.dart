@@ -159,6 +159,32 @@ class SyncController extends ChangeNotifier {
     return summary;
   }
 
+  /// Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto.
+  Future<SyncSummary> attach({
+    required String server,
+    required String username,
+    required String password,
+    bool allowHttp = false,
+  }) async {
+    await _ready();
+    final summary = await syncAttach(
+      server: server.trim(),
+      username: username.trim(),
+      password: password,
+      deviceName: await deviceName(),
+      allowHttp: allowHttp,
+    );
+    start();
+    return summary;
+  }
+
+  /// Stellt auf eine neue Adresse desselben Servers um.
+  Future<void> changeServer(String server, {bool allowHttp = false}) async {
+    await _ready();
+    await syncChangeServer(server: server.trim(), allowHttp: allowHttp);
+    start();
+  }
+
   /// Holt den Tresor eines bestehenden Kontos auf dieses Gerät. Danach ist er entsperrt.
   Future<void> join({
     required String server,

@@ -130,6 +130,28 @@ pub async fn sync_register(
         .await?
 }
 
+/// Verbindet den Tresor dieses Geräts wieder mit seinem bestehenden Konto (etwa nach dem Trennen). Auf dem
+/// Server muss derselbe Tresor liegen.
+pub async fn sync_attach(
+    server: String,
+    username: String,
+    password: String,
+    device_name: String,
+    allow_http: bool,
+) -> Result<SyncSummary> {
+    let sync = client()?;
+    RUNTIME
+        .spawn(async move { Ok(summary(sync.attach(&server, &username, &password, &device_name, allow_http).await?)) })
+        .await?
+}
+
+/// Stellt auf eine neue Adresse desselben Servers um; er muss sich mit demselben Fingerabdruck ausweisen.
+pub async fn sync_change_server(server: String, allow_http: bool) -> Result<()> {
+    let sync = client()?;
+    RUNTIME.spawn(async move { sync.change_server(&server, allow_http).await }).await??;
+    Ok(())
+}
+
 /// Richtet dieses Gerät für ein bestehendes Konto ein: legt unter `path` den
 /// Tresor des Kontos an, holt alles ab und lässt ihn entsperrt.
 pub async fn sync_join(

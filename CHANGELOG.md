@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.12.1] – 2026-11-27
+
+### Added
+
+- **Change the server address:** "Change address" in the sync dialog, `tephra sync set-server <address>`. For the same
+  server under a new address, for example after a change in the network; it must identify itself there with the same
+  fingerprint, and you stay signed in. If nothing answers there, everything stays as it was.
+- **Connect an existing vault to its account again:** "Existing account" in the sync dialog of a device that is not
+  connected, `tephra sync attach <server> <user>`. Until now a device that had been disconnected could not join its
+  account again. The server must hold the same vault; changes made only on this device are merged.
+- **Delete the vault from this device:** in the app under "About Tephra", with the master password. Afterwards the
+  app starts as on first launch, and "Fetch an existing vault" brings the vault back from the sync server.
+
 ## [0.12.0] – 2026-11-26
 
 Security release after a review of the app and of syncing in a home network.
